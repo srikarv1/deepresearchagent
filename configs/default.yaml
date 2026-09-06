@@ -14,8 +14,10 @@ agent:
   name: fixture
   config: configs/agents/fixture.yaml
 
-# provider: mock | openai_compat
+# provider: mock | openai_compat | azure_foundry
 # openai_compat talks to any OpenAI-style server (OpenAI, OpenRouter, vLLM, Ollama).
+# azure_foundry uses Azure's OpenAI-compatible endpoint. Set endpoint to the
+# resource URL; /openai/v1 is appended when it is not already present.
 llm:
   provider: mock
   model: gpt-4.1-mini

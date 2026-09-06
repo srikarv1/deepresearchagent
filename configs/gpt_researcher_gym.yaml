@@ -1,0 +1,38 @@
+run_name: gpt-researcher-gym
+output_dir: runs
+seed: 17
+# gpt-researcher's trackers are process-global; keep this at 1.
+concurrency: 1
+
+dataset:
+  name: deep_research_gym
+  language: en
+  limit: 10
+  query_ids: []
+
+agent:
+  name: gpt_researcher
+  config: configs/agents/gpt_researcher.yaml
+
+# Not used by gpt_researcher (it brings its own stack) but required by the
+# runner. mock keeps the harness from opening a second client.
+llm:
+  provider: mock
+  model: unused
+search:
+  backend: mock
+  top_k: 5
+
+# Budgets are recorded, not enforced: gpt-researcher does not consult them.
+budget:
+  max_steps: 32
+  max_searches: 64
+  max_reads: 128
+  max_tokens: 400000
+  max_latency_s: 1200.0
+  max_evidence: 512
+  enforce: false
+
+eval:
+  official_benches: []
+  # official_benches: [deep_research_gym]
