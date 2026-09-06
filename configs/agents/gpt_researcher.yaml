@@ -1,0 +1,33 @@
+# gpt-researcher deep research mode via the instrumented fork.
+# The agent imports `gpt_researcher` from repo_path (or the current env if
+# already installed) and reads cost from its TokenTracker; ctx.llm / ctx.search
+# are not used.
+name: gpt_researcher
+
+# Path to the instrumented gpt-researcher fork (WilliamOdinson/gpt-researcher).
+# null resolves via ADR_GR_DIR, third_party/gpt-researcher (from
+# scripts/bootstrap_third_party.sh), or a sibling clone; see `adr doctor`.
+repo_path: null
+
+# DeepResearchSkill knobs (become DEEP_RESEARCH_* env vars).
+depth: 2
+breadth: 2
+concurrency: 2
+
+# bs | browser | tavily_extract | firecrawl
+scraper: browser
+retriever: tavily
+max_search_results_per_query: 5
+max_scraper_workers: 4
+
+# Where gpt-researcher writes trajectory_<id>.json and _emb.npz.
+trajectory_dir: runs/_gpt_researcher_raw
+
+# Copy the raw trajectory + npz into <run_dir>/gpt_researcher/<query_id>.*
+keep_trajectory_files: true
+
+# Extra env vars applied before import, e.g. model overrides.
+env: {}
+  # STRATEGIC_LLM: openai:gpt-5.4
+  # SMART_LLM: openai:gpt-5.4
+  # FAST_LLM: openai:gpt-5.4-mini
