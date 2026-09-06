@@ -29,6 +29,11 @@ GYM_MARKERS = ("eval_quality_async.py", "eval_kpr_async.py")
 DRB_NAMES = ("deep_research_bench",)
 GYM_NAMES = ("deepresearchgym", "deepresearch_benchmarking")
 
+# The agent under test, not a judge. The marker is the instrumented fork's
+# trajectory logger; a plain upstream clone is reported as missing.
+GR_MARKERS = ("gpt_researcher/utils/trajectory_logger.py",)
+GR_NAMES = ("gpt-researcher", "gpt_researcher")
+
 
 @dataclass(frozen=True)
 class RepoLocation:
@@ -94,6 +99,11 @@ def find_deep_research_bench(explicit: str | Path | None = None) -> RepoLocation
 
 def find_deep_research_gym(explicit: str | Path | None = None) -> RepoLocation:
     return _resolve(explicit, "ADR_GYM_DIR", GYM_NAMES, GYM_MARKERS, "DeepResearchGym")
+
+
+def find_gpt_researcher(explicit: str | Path | None = None) -> RepoLocation:
+    """Locate the instrumented gpt-researcher fork (WilliamOdinson/gpt-researcher)."""
+    return _resolve(explicit, "ADR_GR_DIR", GR_NAMES, GR_MARKERS, "gpt-researcher fork")
 
 
 def find_key_points(gym_root: Path, explicit: str | Path | None = None) -> Path | None:

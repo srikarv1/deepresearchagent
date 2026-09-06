@@ -17,7 +17,12 @@ from adr.eval.importers import (
     trajectory_from_pair,
     write_trajectories,
 )
-from adr.eval.repos import find_deep_research_bench, find_deep_research_gym, find_key_points
+from adr.eval.repos import (
+    find_deep_research_bench,
+    find_deep_research_gym,
+    find_gpt_researcher,
+    find_key_points,
+)
 from adr.runner.config import load_config
 from adr.runner.experiment import evaluate_run_dir, run_experiment
 
@@ -232,6 +237,26 @@ def doctor_cmd() -> None:
             "Gym key points",
             "[green]found[/green]" if key_points else "[yellow]missing[/yellow]",
             str(key_points or "needed for key-point recall only"),
+        )
+
+    gr = find_gpt_researcher()
+    table.add_row(
+        "gpt-researcher fork",
+        "[green]found[/green]" if gr.ok else "[yellow]missing[/yellow]",
+        str(gr.path or gr.reason),
+    )
+    if gr.ok:
+        try:
+            import importlib.util
+
+            spec = importlib.util.find_spec("gpt_researcher")
+            importable = spec is not None and spec.origin and str(gr.path) in str(spec.origin)
+        except Exception:
+            importable = False
+        table.add_row(
+            "gpt_researcher importable from fork",
+            "[green]yes[/green]" if importable else "[yellow]no[/yellow]",
+            "" if importable else f"pip install -e {gr.path}",
         )
 
     for name, used_for in (
