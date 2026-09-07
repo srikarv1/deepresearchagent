@@ -103,7 +103,7 @@ def test_race_invocation_and_score_parseback(fake_bench: Path, tmp_path: Path, m
     assert call["max_workers"] == 3
     assert call["judge_key_seen"] is True
     assert call["target_rows"] == 1
-    assert call["query_file"].endswith("data/prompt_data/query.jsonl")
+    assert Path(call["query_file"]).as_posix().endswith("data/prompt_data/query.jsonl")
 
     assert result["race"]["scores"]["overall_score"] == pytest.approx(0.5102)
     assert result["race"]["scores"]["comprehensiveness"] == pytest.approx(0.5120)
