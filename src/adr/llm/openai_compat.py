@@ -27,7 +27,10 @@ class OpenAICompatLLM:
         self.model = model
         self.default_temperature = default_temperature
         self.default_max_tokens = default_max_tokens
-        key = api_key or os.environ.get(api_key_env) or os.environ.get("OPENAI_API_KEY") or "dummy"
+        key = api_key or os.environ.get(api_key_env)
+        if key is None and api_key_env == "OPENAI_API_KEY":
+            key = os.environ.get("OPENAI_API_KEY")
+        key = key or "dummy"
         kwargs: dict[str, Any] = {"api_key": key}
         if base_url:
             kwargs["base_url"] = base_url.rstrip("/")
