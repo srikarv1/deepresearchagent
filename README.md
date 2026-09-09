@@ -73,6 +73,19 @@ Then compare a baseline against a candidate. Quality, cost, and structure are re
 adr compare runs/<baseline> runs/<candidate>
 ```
 
+## Run gpt-researcher as the baseline
+
+The instrumented [gpt-researcher fork](https://github.com/WilliamOdinson/gpt-researcher) is wired in as the `gpt_researcher` agent.
+
+```bash
+bash scripts/bootstrap_third_party.sh    # also links or clones the fork
+pip install -e third_party/gpt-researcher
+adr doctor
+adr run --config configs/gpt_researcher_gym.yaml --limit 5
+```
+
+It brings its own LLM and retrieval stack, so cost comes from the fork's `TokenTracker` rather than `MeteredLLM`; `final_stats.cost_source` says so. Each deep-research round is one `prune` step and `write_report()` is the `write` step. The fork's raw `trajectory_<id>.json` and `_emb.npz` land in `<run_dir>/gpt_researcher/`. Keep `concurrency: 1`; the fork's trackers are process-global.
+
 ## Implement an agent
 
 Fill in `src/adr/agents/deep_research.py` or `pilot.py`. The contract is one method:
@@ -93,6 +106,7 @@ Budgets are charged as you spend. With `budget.enforce: true` the overrunning ca
 ```
 src/adr/
   agents/         implement your agent here (deep_research.py, pilot.py are stubs)
+                  gpt_researcher.py wraps the instrumented gpt-researcher fork
   core/
     state.py      evidence pool, frontier, budget, compact_stats()
     instrument.py MeteredLLM / MeteredSearch / CostMeter

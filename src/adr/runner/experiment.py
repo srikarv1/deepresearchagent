@@ -80,7 +80,7 @@ async def run_experiment_async(config: dict[str, Any]) -> RunManifest:
             ctx = AgentContext(
                 llm=MeteredLLM(llm, meter, budget=task.budget, enforce=enforce_budget),
                 search=MeteredSearch(search, meter, budget=task.budget, enforce=enforce_budget),
-                extra={"config": config, "meter": meter},
+                extra={"config": config, "meter": meter, "run_dir": str(run_dir)},
             )
             t0 = time.perf_counter()
             try:
