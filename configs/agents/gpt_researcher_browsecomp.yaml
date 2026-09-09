@@ -1,0 +1,17 @@
+name: gpt_researcher
+repo_path: null
+depth: 1
+breadth: 4
+concurrency: 4
+scraper: browser
+retriever: tavily
+max_search_results_per_query: 10
+max_scraper_workers: 4
+trajectory_dir: runs/_gpt_researcher_raw
+keep_trajectory_files: true
+env:
+  STRATEGIC_LLM: "openai:gpt-5-mini"
+  SMART_LLM: "openai:gpt-5-mini"
+  FAST_LLM: "openai:gpt-5-mini"
+  EMBEDDING: "openai:text-embedding-3-small"
+  SMART_TOKEN_LIMIT: "8000"
