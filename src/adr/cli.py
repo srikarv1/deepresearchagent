@@ -8,8 +8,10 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from adr.core.types import Trajectory
 from adr.datasets.loader import load_queries
 from adr.eval.compare import compare_summaries
+from adr.eval.dag import render
 from adr.eval.importers import (
     resolve_question,
     trajectories_from_drb_jsonl,
@@ -207,6 +209,41 @@ def compare_cmd(
                 "-" if pct is None else f"{pct:+.2f}%",
             )
         console.print(table)
+
+
+@app.command("dag")
+def dag_cmd(
+    trajectory: Path = typer.Argument(..., help="A trajectories/<query_id>.json file, or a run dir"),
+    query_id: Optional[str] = typer.Option(None, "--query-id", help="Which trajectory, when given a run dir"),
+    fmt: str = typer.Option("mermaid", "--format", "-f", help="mermaid | dot"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Write here instead of stdout"),
+    direction: Optional[str] = typer.Option(None, "--direction", help="TD/LR for mermaid, TB/LR for dot"),
+    no_evidence: bool = typer.Option(False, "--no-evidence", help="Drop evidence nodes"),
+    citations: bool = typer.Option(False, "--citations", help="Add a node per cited url"),
+) -> None:
+    """Render one trajectory as a DAG of steps, branches, and evidence."""
+    path = trajectory
+    if path.is_dir():
+        candidates = sorted((path / "trajectories").glob("*.json")) or sorted(path.glob("*.json"))
+        if query_id:
+            candidates = [p for p in candidates if p.stem == query_id]
+        if not candidates:
+            raise typer.BadParameter(f"No trajectory json under {path}")
+        path = candidates[0]
+    traj = Trajectory.model_validate_json(path.read_text(encoding="utf-8"))
+    text = render(
+        traj,
+        fmt=fmt,
+        include_evidence=not no_evidence,
+        include_citations=citations,
+        direction=direction,
+    )
+    if output:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(text, encoding="utf-8")
+        console.print(f"[green]Wrote[/green] {output}")
+    else:
+        print(text, end="")
 
 
 @app.command("doctor")
