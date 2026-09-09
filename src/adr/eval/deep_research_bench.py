@@ -24,13 +24,26 @@ from adr.eval.scoring import parse_key_value_report
 
 SCRAPE_KEY = "JINA_API_KEY"
 
+# LLM_BACKEND -> the key the judge's utils/api.py reads for that backend.
+# Some DRB checkouts default to Gemini, so that is accepted too.
+_BACKEND_KEYS = {
+    "openai": "OPENAI_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY",
+    "gemini": "GEMINI_API_KEY",
+}
+
 
 def _judge_key() -> tuple[str, str]:
     """Return (key_env_name, backend_name) based on LLM_BACKEND."""
     backend = os.environ.get("LLM_BACKEND", "openrouter").lower()
-    if backend == "openai":
-        return "OPENAI_API_KEY", backend
-    return "OPENROUTER_API_KEY", backend
+    return _BACKEND_KEYS.get(backend, "OPENROUTER_API_KEY"), backend
+
+
+def _any_judge_key_present(env: dict[str, str]) -> str | None:
+    for key in _BACKEND_KEYS.values():
+        if os.environ.get(key) or env.get(key):
+            return key
+    return None
 
 
 def run_deep_research_bench(
@@ -70,11 +83,16 @@ def run_deep_research_bench(
     env = dict(extra_env or {})
     key_name, backend = _judge_key()
     if not (os.environ.get(key_name) or env.get(key_name)):
-        result["reason"] = (
-            f"{key_name} is not set (LLM_BACKEND={backend}). "
-            f"Set {key_name}, or switch backend via LLM_BACKEND=openai|openrouter."
-        )
-        return result
+        present = _any_judge_key_present(env)
+        if present is None:
+            result["reason"] = (
+                f"{key_name} is not set (LLM_BACKEND={backend}). "
+                f"Set {key_name}, or switch backend via LLM_BACKEND=openai|openrouter|gemini."
+            )
+            return result
+        # The judge checkout may read a different key than LLM_BACKEND implies
+        # (e.g. a Gemini-defaulting fork). Proceed and record what we saw.
+        result["key_note"] = f"{key_name} unset for LLM_BACKEND={backend}; proceeding because {present} is set"
 
     # The judges read the target report from the raw data directory keyed by model name.
     dest = bench_root / "data" / "test_data" / "raw_data" / f"{model_name}.jsonl"

@@ -1,0 +1,17 @@
+name: browsecomp
+# Encrypted CSV; null resolves to data/benchmarks/browsecomp/browse_comp_test_set.csv
+csv_path: null
+
+# Grader LLM (simple-evals does not pin one). Keep it fixed across every row
+# and seed of a table and report it in the caption. Built through
+# adr.llm.factory.build_llm, so any OpenAI-compatible endpoint works.
+judge:
+  provider: openai
+  model: gpt-4.1
+  api_key_env: OPENAI_API_KEY
+  base_url: null
+  temperature: 0.0
+  max_output_tokens: 800
+  concurrency: 8
+
+timeout_s: null

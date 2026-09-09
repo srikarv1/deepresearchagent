@@ -30,8 +30,8 @@ def test_smoke_run_writes_gym_exports_and_metrics(tmp_path: Path):
     )
     manifest = run_experiment(cfg)
     run_dir = manifest.run_dir
-    assert (run_dir / "exports" / "deep_research_gym" / "fixture" / "923549.a").exists()
-    assert (run_dir / "exports" / "deep_research_gym" / "fixture" / "923549.q").exists()
+    assert (run_dir / "exports" / "deep_research_gym" / manifest.run_id / "923549.a").exists()
+    assert (run_dir / "exports" / "deep_research_gym" / manifest.run_id / "923549.q").exists()
     assert (run_dir / "reports" / "923549.md").read_text(encoding="utf-8")
     summary = json.loads((run_dir / "metrics" / "summary.json").read_text(encoding="utf-8"))
     assert summary["n_queries"] == 2
@@ -51,7 +51,7 @@ def test_drb_export_from_fixture(tmp_path: Path):
         },
     )
     manifest = run_experiment(cfg)
-    export = manifest.run_dir / "exports" / "deep_research_bench" / "fixture.jsonl"
+    export = manifest.run_dir / "exports" / "deep_research_bench" / f"{manifest.run_id}.jsonl"
     assert export.exists()
     row = json.loads(export.read_text(encoding="utf-8").splitlines()[0])
     assert set(row) == {"id", "prompt", "article"}

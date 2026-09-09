@@ -1,0 +1,48 @@
+# Table 4 rows on BrowseComp — base config for every row.
+#
+#   adr run -c configs/table4/browsecomp.yaml --run-name bc-topk-s1 --seed 1 \
+#       --agent-env GR_ORCHESTRATOR=topk --agent-env GR_CONTEXT_BUDGET_TOKENS=<B>
+#
+# Judge afterwards with `adr evaluate <run_dir> --official browsecomp`.
+run_name: bc
+output_dir: runs
+seed: 1
+concurrency: 1
+
+dataset:
+  name: browsecomp
+  language: en
+  # simple-evals protocol: random.Random(0).sample(rows, n). 200 is the same
+  # 200 questions for everyone; null = all 1,266.
+  sample: 200
+  limit: null
+  query_ids: []
+
+agent:
+  name: gpt_researcher
+  config: configs/agents/gpt_researcher.yaml
+  overrides:
+    depth: 2
+    breadth: 4
+    concurrency: 2
+    env:
+      GR_ORCHESTRATOR: none
+
+llm:
+  provider: mock
+  model: unused
+search:
+  backend: mock
+  top_k: 5
+
+budget:
+  max_steps: 64
+  max_searches: 128
+  max_reads: 256
+  max_tokens: 2000000
+  max_latency_s: 3600.0
+  max_evidence: 2048
+  enforce: false
+
+eval:
+  official_benches: []

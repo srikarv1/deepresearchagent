@@ -211,4 +211,9 @@ def headline_scores(official: dict[str, Any]) -> dict[str, float]:
     if isinstance(citation.get("average_citation_score"), (int, float)):
         flat["gym_citation_score"] = float(citation["average_citation_score"])
 
+    bc = official.get("browsecomp") or {}
+    for key in ("accuracy", "calibration_error"):
+        if isinstance(bc.get(key), (int, float)):
+            flat[f"bc_{key}"] = float(bc[key])
+
     return flat

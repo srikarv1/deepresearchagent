@@ -16,6 +16,7 @@ GYM_QUERIES = (
 class DatasetName(str, Enum):
     DEEP_RESEARCH_BENCH = "deep_research_bench"
     DEEP_RESEARCH_GYM = "deep_research_gym"
+    BROWSECOMP = "browsecomp"
 
 
 def load_queries(
@@ -25,8 +26,14 @@ def load_queries(
     language: str | None = None,
     limit: int | None = None,
     query_ids: list[str] | None = None,
+    sample: int | None = None,
 ) -> list[Query]:
     name = DatasetName(dataset)
+    if name is DatasetName.BROWSECOMP:
+        from adr.datasets.browsecomp import load_browsecomp
+
+        return load_browsecomp(path, limit=limit, query_ids=query_ids, sample=sample)
+
     source = Path(path) if path else (DRB_QUERIES if name is DatasetName.DEEP_RESEARCH_BENCH else GYM_QUERIES)
     if not source.exists():
         raise FileNotFoundError(f"Query file not found: {source}")

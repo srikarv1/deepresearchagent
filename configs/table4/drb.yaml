@@ -1,0 +1,56 @@
+# Table 4 on DeepResearch Bench — base config for every row.
+#
+# One row = one orchestration policy = one value of GR_ORCHESTRATOR. Do not
+# copy this file per row; pass the policy and seed on the command line so the
+# backbone below is provably identical across rows:
+#
+#   adr run -c configs/table4/drb.yaml --run-name drb-topk-s1 --seed 1 \
+#       --agent-env GR_ORCHESTRATOR=topk --agent-env GR_CONTEXT_BUDGET_TOKENS=<B>
+#
+# or use scripts/run_table4.sh which loops policies x seeds.
+run_name: drb
+output_dir: runs
+seed: 1
+# gpt-researcher's TokenTracker / LatencyTracker are process-global.
+concurrency: 1
+
+dataset:
+  name: deep_research_bench
+  language: en
+  limit: null          # all 100 English prompts; set e.g. 10 for a smoke run
+  query_ids: []
+
+agent:
+  name: gpt_researcher
+  config: configs/agents/gpt_researcher.yaml
+  # Per-run overrides deep-merged onto the agent config. --agent-env writes
+  # into overrides.env; everything else here is the frozen backbone.
+  overrides:
+    depth: 2
+    breadth: 4
+    concurrency: 2
+    env:
+      GR_ORCHESTRATOR: none
+
+# Not used by gpt_researcher (it brings its own stack) but required by the runner.
+llm:
+  provider: mock
+  model: unused
+search:
+  backend: mock
+  top_k: 5
+
+# Recorded, not enforced: gpt-researcher does not consult these.
+budget:
+  max_steps: 64
+  max_searches: 128
+  max_reads: 256
+  max_tokens: 2000000
+  max_latency_s: 3600.0
+  max_evidence: 2048
+  enforce: false
+
+eval:
+  # Judge separately with `adr evaluate <run_dir> --official deep_research_bench`
+  # so a judge failure never forces re-running inference.
+  official_benches: []

@@ -36,6 +36,18 @@ def _benches(value: str | None) -> list[str]:
     return [x.strip() for x in (value or "").split(",") if x.strip()]
 
 
+def parse_env_pairs(pairs: list[str]) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for raw in pairs:
+        if "=" not in raw:
+            raise typer.BadParameter(f"--agent-env expects KEY=VALUE, got {raw!r}")
+        key, value = raw.split("=", 1)
+        if not key.strip():
+            raise typer.BadParameter(f"--agent-env has an empty key: {raw!r}")
+        out[key.strip()] = value
+    return out
+
+
 def _print_summary(summary: dict[str, Any]) -> None:
     table = Table(title="Local cost metrics", show_header=True)
     table.add_column("metric")
@@ -84,8 +96,15 @@ def run_cmd(
     search_backend: Optional[str] = typer.Option(None, "--search"),
     language: Optional[str] = typer.Option(None, "--language"),
     limit: Optional[int] = typer.Option(None, "--limit"),
+    sample: Optional[int] = typer.Option(None, "--sample", help="Random(0) subsample size (BrowseComp)"),
     run_name: Optional[str] = typer.Option(None, "--run-name"),
-    official: Optional[str] = typer.Option(None, "--official", help="Comma-separated: deep_research_bench,deep_research_gym"),
+    seed: Optional[int] = typer.Option(None, "--seed", help="Replicate label recorded in the run"),
+    agent_env: list[str] = typer.Option(
+        [],
+        "--agent-env",
+        help="KEY=VALUE set in the agent's environment (repeatable), e.g. GR_ORCHESTRATOR=topk",
+    ),
+    official: Optional[str] = typer.Option(None, "--official", help="Comma-separated: deep_research_bench,deep_research_gym,browsecomp"),
 ) -> None:
     overrides: dict = {}
     if dataset:
@@ -94,6 +113,13 @@ def run_cmd(
         overrides.setdefault("dataset", {})["language"] = language
     if limit is not None:
         overrides.setdefault("dataset", {})["limit"] = limit
+    if sample is not None:
+        overrides.setdefault("dataset", {})["sample"] = sample
+    if seed is not None:
+        overrides["seed"] = seed
+    if agent_env:
+        env = overrides.setdefault("agent", {}).setdefault("overrides", {}).setdefault("env", {})
+        env.update(parse_env_pairs(agent_env))
     if agent:
         overrides.setdefault("agent", {})["name"] = agent
     if llm_provider:
@@ -244,6 +270,38 @@ def dag_cmd(
         console.print(f"[green]Wrote[/green] {output}")
     else:
         print(text, end="")
+
+
+@app.command("table")
+def table_cmd(
+    runs: list[Path] = typer.Argument(..., help="Run dirs, or parent dirs containing run dirs"),
+    dataset: Optional[str] = typer.Option(None, "--dataset", "-d", help="Filter to one dataset"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Write markdown here"),
+    as_json: bool = typer.Option(False, "--json", help="Print the aggregated table as JSON"),
+) -> None:
+    """Aggregate runs into a Table-4 style markdown table (mean ± std over seeds per policy)."""
+    from adr.eval.table import build_table, collect_runs, to_markdown
+
+    rows = collect_runs([Path(p) for p in runs])
+    if not rows:
+        raise typer.BadParameter("No run dirs with metrics/summary.json found")
+    table = build_table(rows, dataset=dataset)
+    if as_json:
+        payload = {
+            **{k: v for k, v in table.items() if k != "rows"},
+            "rows": [
+                {**{k: v for k, v in r.items() if k != "cells"}, "cells": [c.values for c in r["cells"]]}
+                for r in table["rows"]
+            ],
+        }
+        print(json.dumps(payload, indent=2, default=str))
+        return
+    text = to_markdown(table)
+    if output:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(text, encoding="utf-8")
+        console.print(f"[green]Wrote[/green] {output}")
+    print(text, end="")
 
 
 @app.command("doctor")

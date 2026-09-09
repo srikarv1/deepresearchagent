@@ -17,9 +17,10 @@ from adr.agents.registry import build_agent
 from adr.core.instrument import CostMeter, MeteredLLM, MeteredSearch
 from adr.core.types import Budget, Query, ResearchTask, Trajectory
 from adr.datasets.loader import load_queries
+from adr.eval.browsecomp import run_browsecomp
 from adr.eval.deep_research_bench import run_deep_research_bench
 from adr.eval.deep_research_gym import run_deep_research_gym
-from adr.eval.exporters import export_deep_research_bench, export_deep_research_gym
+from adr.eval.exporters import export_browsecomp, export_deep_research_bench, export_deep_research_gym
 from adr.eval.local_metrics import compute_local_metrics, write_local_metrics
 from adr.eval.scoring import headline_scores
 from adr.llm.factory import build_llm
@@ -53,6 +54,7 @@ async def run_experiment_async(config: dict[str, Any]) -> RunManifest:
         language=config["dataset"].get("language"),
         limit=config["dataset"].get("limit"),
         query_ids=config["dataset"].get("query_ids") or None,
+        sample=config["dataset"].get("sample"),
     )
     manifest = RunManifest(
         run_id=run_id,
@@ -64,7 +66,11 @@ async def run_experiment_async(config: dict[str, Any]) -> RunManifest:
     llm = build_llm(config.get("llm") or {})
     search = build_search(config.get("search") or {})
     agent_cfg = config.get("agent") or {}
-    agent = build_agent(agent_cfg.get("name", "fixture"), agent_cfg.get("config"))
+    agent = build_agent(
+        agent_cfg.get("name", "fixture"),
+        agent_cfg.get("config"),
+        overrides=agent_cfg.get("overrides"),
+    )
     budget_cfg = dict(config.get("budget") or {})
     enforce_budget = bool(budget_cfg.pop("enforce", False))
 
@@ -104,12 +110,13 @@ async def run_experiment_async(config: dict[str, Any]) -> RunManifest:
     metrics = compute_local_metrics(trajectories)
     write_local_metrics(run_dir / "metrics" / "local.json", metrics)
 
-    model_name = str(agent_cfg.get("name") or "agent")
+    # The judge repos key their staged inputs and results by this name, so it
+    # must be unique per run or two rows of a table overwrite each other.
+    # run_id is <timestamp>-<run_name>; evaluate_run_dir uses the same value.
+    model_name = _model_name(config, run_id)
+    agent_name = str(agent_cfg.get("name") or "agent")
     dataset_name = config["dataset"]["name"]
-    if dataset_name == "deep_research_bench":
-        export_deep_research_bench(trajectories, run_dir / "exports" / "deep_research_bench" / f"{model_name}.jsonl")
-    else:
-        export_deep_research_gym(trajectories, run_dir / "exports" / "deep_research_gym" / model_name)
+    _export(trajectories, dataset_name, run_dir, model_name)
 
     official: dict[str, Any] = {}
     for bench in config.get("eval", {}).get("official_benches") or []:
@@ -117,8 +124,10 @@ async def run_experiment_async(config: dict[str, Any]) -> RunManifest:
 
     summary = {
         "run_id": run_id,
-        "agent": model_name,
+        "agent": agent_name,
         "dataset": dataset_name,
+        "seed": config.get("seed"),
+        "orchestrator": _orchestrator_of(config),
         "n_queries": len(trajectories),
         **{k: v for k, v in metrics.items() if k != "per_query"},
         "scores": headline_scores(official),
@@ -139,13 +148,29 @@ def evaluate_run_dir(run_dir: Path, *, official_benches: list[str], config: dict
         raise FileNotFoundError(f"No trajectories in {run_dir / 'trajectories'}")
     metrics = compute_local_metrics(trajectories)
     write_local_metrics(run_dir / "metrics" / "local.json", metrics)
-    cfg = config or {}
-    model_name = ((cfg.get("agent") or {}).get("name")) or run_dir.name
+    # Prefer the run's own saved config so orchestrator/seed/dataset are
+    # preserved in summary.json; an explicit config only layers eval settings.
+    saved = _saved_config(run_dir)
+    cfg = dict(saved)
+    if config:
+        for k, v in config.items():
+            if isinstance(v, dict) and isinstance(cfg.get(k), dict):
+                cfg[k] = {**cfg[k], **v}
+            else:
+                cfg[k] = v
+    model_name = _model_name(cfg, run_dir.name)
+    dataset_name = ((cfg.get("dataset") or {}).get("name")) or (trajectories[0].query.dataset if trajectories else "")
+    if dataset_name:
+        _export(trajectories, dataset_name, run_dir, model_name)
     official: dict[str, Any] = {}
     for bench in official_benches:
         official[bench] = _run_official(bench, trajectories, run_dir, model_name, cfg)
     summary = {
         "run_id": run_dir.name,
+        "agent": ((cfg.get("agent") or {}).get("name")) or "imported",
+        "dataset": dataset_name,
+        "seed": cfg.get("seed"),
+        "orchestrator": _orchestrator_of(cfg),
         "n_queries": len(trajectories),
         **{k: v for k, v in metrics.items() if k != "per_query"},
         "scores": headline_scores(official),
@@ -153,6 +178,39 @@ def evaluate_run_dir(run_dir: Path, *, official_benches: list[str], config: dict
     }
     (run_dir / "metrics" / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     return summary
+
+
+def _saved_config(run_dir: Path) -> dict[str, Any]:
+    path = run_dir / "config.yaml"
+    if not path.exists():
+        return {}
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return data if isinstance(data, dict) else {}
+
+
+def _model_name(config: dict[str, Any], default: str) -> str:
+    """Name under which judges stage and store this run's results."""
+    explicit = (config.get("eval") or {}).get("model_name")
+    return str(explicit) if explicit else default
+
+
+def _orchestrator_of(config: dict[str, Any]) -> str | None:
+    """GR_ORCHESTRATOR as set for this run (agent overrides win over agent env)."""
+    agent = config.get("agent") or {}
+    for block in (agent.get("overrides") or {}, agent):
+        env = (block.get("env") or {}) if isinstance(block, dict) else {}
+        if env.get("GR_ORCHESTRATOR"):
+            return str(env["GR_ORCHESTRATOR"])
+    return None
+
+
+def _export(trajectories: list[Trajectory], dataset_name: str, run_dir: Path, model_name: str) -> None:
+    if dataset_name == "deep_research_bench":
+        export_deep_research_bench(trajectories, run_dir / "exports" / "deep_research_bench" / f"{model_name}.jsonl")
+    elif dataset_name == "browsecomp":
+        export_browsecomp(trajectories, run_dir / "exports" / "browsecomp" / f"{model_name}.jsonl")
+    else:
+        export_deep_research_gym(trajectories, run_dir / "exports" / "deep_research_gym" / model_name)
 
 
 def _run_official(
@@ -174,6 +232,16 @@ def _run_official(
             skip_cleaning=bool(eval_cfg.get("skip_cleaning", False)),
             run_race=bool(eval_cfg.get("run_race", True)),
             run_fact=bool(eval_cfg.get("run_fact", True)),
+            timeout_s=eval_cfg.get("timeout_s"),
+        )
+    if bench in {"browsecomp", "bc"}:
+        eval_cfg = _eval_file(config, "browsecomp")
+        return run_browsecomp(
+            trajectories,
+            run_dir=run_dir,
+            model_name=model_name,
+            judge_cfg=eval_cfg.get("judge") or {},
+            csv_path=eval_cfg.get("csv_path"),
             timeout_s=eval_cfg.get("timeout_s"),
         )
     if bench in {"deep_research_gym", "gym"}:
