@@ -1,0 +1,10 @@
+name: browsecomp
+query_file: data/benchmarks/browsecomp/query.jsonl
+
+language: en
+workers: 4
+skip_cleaning: false
+run_race: true
+run_fact: true
+
+timeout_s: null
