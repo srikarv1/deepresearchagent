@@ -9,7 +9,7 @@ description = "End-to-end harness for testing deep research agent architectures 
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-authors = [{ name = "deepResearchAgent" }]
+authors = [{ name = "Adobe Deep Research" }]
 dependencies = [
     "httpx>=0.27",
     "openai>=1.40",
@@ -18,6 +18,7 @@ dependencies = [
     "python-dotenv>=1.0",
     "pyyaml>=6.0",
     "rich>=13.7",
+    "selenium>=4.11",
     "tqdm>=4.66",
     "typer>=0.12",
 ]

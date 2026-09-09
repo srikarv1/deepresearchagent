@@ -56,5 +56,6 @@ echo "Judge dependencies (install into the same env that runs adr):"
 echo "  pip install -r $DEST/deep_research_bench/requirements.txt   # google-genai for RACE/FACT"
 echo "  pip install openai crawl4ai                                 # Gym judges (+ citation)"
 echo "  pip install -e $DEST/gpt-researcher                          # gpt_researcher agent"
+echo "  pip install selenium                                         # gpt-researcher browser scraper"
 echo
 echo "Verify with: adr doctor"

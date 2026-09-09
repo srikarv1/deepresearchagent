@@ -1,0 +1,38 @@
+run_name: gpt-researcher-one-query
+output_dir: runs
+seed: 17
+
+# The instrumented fork uses process-global trackers and caches.
+concurrency: 1
+
+dataset:
+  name: deep_research_gym
+  language: en
+  limit: 1
+  query_ids: []
+
+agent:
+  name: gpt_researcher
+  config: configs/agents/gpt_researcher.yaml
+
+# gpt-researcher owns its LLM and retrieval stack. These satisfy the harness
+# contract but are not used by the adapter.
+llm:
+  provider: mock
+  model: unused
+search:
+  backend: mock
+  top_k: 5
+
+# Recorded by the harness; the fork owns enforcement for this run.
+budget:
+  max_steps: 32
+  max_searches: 64
+  max_reads: 128
+  max_tokens: 400000
+  max_latency_s: 1200.0
+  max_evidence: 512
+  enforce: false
+
+eval:
+  official_benches: []
