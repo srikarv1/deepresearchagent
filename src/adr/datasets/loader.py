@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 from enum import Enum
 from pathlib import Path
@@ -11,11 +13,13 @@ DRB_QUERIES = ROOT / "data" / "benchmarks" / "deep_research_bench" / "query.json
 GYM_QUERIES = (
     ROOT / "data" / "benchmarks" / "deep_research_gym" / "researchy_queries_sample_doc_click.jsonl"
 )
+BROWSECOMP_QUERIES = ROOT / "data" / "benchmarks" / "browsecomp" / "query.jsonl"
 
 
 class DatasetName(str, Enum):
     DEEP_RESEARCH_BENCH = "deep_research_bench"
     DEEP_RESEARCH_GYM = "deep_research_gym"
+    BROWSECOMP = "browsecomp"
 
 
 def load_queries(
@@ -27,7 +31,14 @@ def load_queries(
     query_ids: list[str] | None = None,
 ) -> list[Query]:
     name = DatasetName(dataset)
-    source = Path(path) if path else (DRB_QUERIES if name is DatasetName.DEEP_RESEARCH_BENCH else GYM_QUERIES)
+    if path:
+        source = Path(path)
+    elif name is DatasetName.DEEP_RESEARCH_BENCH:
+        source = DRB_QUERIES
+    elif name is DatasetName.BROWSECOMP:
+        source = BROWSECOMP_QUERIES
+    else:
+        source = GYM_QUERIES
     if not source.exists():
         raise FileNotFoundError(f"Query file not found: {source}")
 
@@ -58,6 +69,19 @@ def _row_to_query(dataset: DatasetName, row: dict) -> Query:
             topic=row.get("topic"),
             metadata={"raw": row},
         )
+    if dataset is DatasetName.BROWSECOMP:
+        canary = row["canary"]
+        return Query(
+            id=str(row["id"]),
+            text=_browsecomp_decrypt(row["problem"], canary),
+            dataset=dataset.value,
+            language="en",
+            topic=row.get("problem_topic"),
+            metadata={
+                "raw": row,
+                "answer": _browsecomp_decrypt(row["answer"], canary),
+            },
+        )
     return Query(
         id=str(row["id"]),
         text=row["query"],
@@ -65,3 +89,18 @@ def _row_to_query(dataset: DatasetName, row: dict) -> Query:
         language="en",
         metadata={"raw": row},
     )
+
+
+# ---------------------------------------------------------------------------
+# BrowseComp XOR decryption (mirrors openai/simple-evals browsecomp_eval.py)
+# ---------------------------------------------------------------------------
+
+def _browsecomp_derive_key(password: str, length: int) -> bytes:
+    key = hashlib.sha256(password.encode()).digest()
+    return key * (length // len(key)) + key[: length % len(key)]
+
+
+def _browsecomp_decrypt(ciphertext_b64: str, password: str) -> str:
+    encrypted = base64.b64decode(ciphertext_b64)
+    key = _browsecomp_derive_key(password, len(encrypted))
+    return bytes(a ^ b for a, b in zip(encrypted, key)).decode()
