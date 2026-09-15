@@ -186,7 +186,13 @@ class GPTResearcherAgent:
                     "search_calls": rc.search_calls,
                     "llm_calls": rc.llm_calls,
                     "frontier": [
-                        {"node_id": fn.node_id, "status": fn.status} for fn in snap.frontier
+                        {
+                            "node_id": fn.node_id,
+                            "status": fn.status,
+                            "subquery": fn.subquery,
+                            "parent_subquery": fn.parent_subquery,
+                        }
+                        for fn in snap.frontier
                     ],
                 },
             )
