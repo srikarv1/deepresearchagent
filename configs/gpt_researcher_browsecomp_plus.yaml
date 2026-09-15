@@ -38,12 +38,6 @@ budget:
   enforce: false
 
 eval:
-  # No harness-side judge for this bench. The run exports the official layout to
-  # <run_dir>/exports/browsecomp_plus/<agent>/ plus ground_truth.jsonl (with
-  # retrieved_docids from the bcp:// hits); grade with the upstream script from
-  # a texttron/BrowseComp-Plus checkout:
-  #   python scripts_evaluation/evaluate_with_openai.py \
-  #     --input_dir <run_dir>/exports/browsecomp_plus/gpt_researcher \
-  #     --ground_truth <run_dir>/exports/browsecomp_plus/ground_truth.jsonl \
-  #     --qrel_evidence topics-qrels/qrel_evidence.txt --eval_dir <run_dir>/evals
+  # Accuracy + Recall via adr evaluate --official browsecomp_plus (official
+  # grader prompt; recall uses evidence_docs already on the Query).
   official_benches: []

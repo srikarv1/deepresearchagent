@@ -166,6 +166,8 @@ class _Deep:
 class _FakeGPTResearcher:
     """Simulates the fork: conduct_research fills trackers, write_report adds synthesis."""
 
+    last_write_kwargs: dict = {}
+
     def __init__(self, query: str, report_type: str = "research_report", **_: object):
         assert report_type == "deep"
         self.query = query
@@ -193,7 +195,8 @@ class _FakeGPTResearcher:
             _LatencyTracker.per_type_latencies["search"]["total_latency"] += rc.latency_seconds * 0.5
         return self._traj.final_context
 
-    async def write_report(self):
+    async def write_report(self, **kwargs):
+        type(self).last_write_kwargs = dict(kwargs)
         sc = self._traj.synthesis_cost
         _TokenTracker.total_input_tokens += sc.tokens_input
         _TokenTracker.total_output_tokens += sc.tokens_output
@@ -324,7 +327,7 @@ def test_missing_fork_gives_clear_error(monkeypatch: pytest.MonkeyPatch, gym_que
         async def conduct_research(self):
             return ""
 
-        async def write_report(self):
+        async def write_report(self, **_):
             return ""
 
     pkg = types.ModuleType("gpt_researcher")
@@ -410,3 +413,28 @@ def test_retrieved_docids_ignores_web_urls():
 
     assert GPTResearcherAgent._retrieved_docids(_R(), _T()) == ["5", "7"]
     assert GPTResearcherAgent._retrieved_docids(types.SimpleNamespace(), types.SimpleNamespace()) == []
+
+
+@pytest.mark.asyncio
+async def test_adapter_requests_browsecomp_answer_format(
+    fake_gpt_researcher: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from adr.agents.gpt_researcher import GPTResearcherAgent
+    from adr.core.types import Query
+
+    monkeypatch.delenv("GR_ANSWER_FORMAT", raising=False)
+    query = Query(
+        id="1",
+        text="An African author...",
+        dataset="browsecomp_plus",
+        language="en",
+        metadata={"answer": "1988-96"},
+    )
+    agent = GPTResearcherAgent({"trajectory_dir": str(fake_gpt_researcher), "keep_trajectory_files": False})
+    ctx = AgentContext(llm=None, search=None, extra={"meter": CostMeter(), "run_dir": str(tmp_path)})
+    await agent.run(ResearchTask(query=query, budget=Budget()), ctx)
+    assert _FakeGPTResearcher.last_write_kwargs.get("answer_format") == "browsecomp"
+
+    gym = Query(id="chip", text="why chip", dataset="deep_research_gym", language="en")
+    await agent.run(ResearchTask(query=gym, budget=Budget()), ctx)
+    assert "answer_format" not in _FakeGPTResearcher.last_write_kwargs
