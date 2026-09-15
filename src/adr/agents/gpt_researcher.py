@@ -117,7 +117,13 @@ class GPTResearcherAgent:
         researcher = GPTResearcher(query=task.query.text, report_type="deep")
         t0 = time.perf_counter()
         await researcher.conduct_research()
-        report_text = await researcher.write_report()
+        custom_prompt = ""
+        if task.query.dataset == "browsecomp_plus":
+            custom_prompt = (
+                "Answer the query in one short sentence based on the research context. "
+                "No headers, no citations, just the factual answer."
+            )
+        report_text = await researcher.write_report(custom_prompt=custom_prompt)
         wall = time.perf_counter() - t0
 
         deep = getattr(researcher, "deep_researcher", None)
