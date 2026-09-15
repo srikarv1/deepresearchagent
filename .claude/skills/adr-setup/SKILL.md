@@ -1,6 +1,6 @@
 ---
 name: adr-setup
-description: Set up the deepresearchagent (adr) development environment and run benchmarks. Use when the user asks about installation, environment variables, API keys, bootstrap, deploying models, running DRB or BrowseComp benchmarks, or getting the project running for the first time. Also use when the user hits errors related to missing keys, missing modules, or Tavily/OpenAI/Azure configuration.
+description: Set up the deepresearchagent (adr) development environment and run benchmarks. Use when the user asks about installation, environment variables, API keys, bootstrap, deploying models, running DRB or BrowseComp-Plus benchmarks, the BrowseComp-Plus retriever server or BM25 index, or getting the project running for the first time. Also use when the user hits errors related to missing keys, missing modules, pyserini/Java, a missing Lucene index, a refused connection to 127.0.0.1:8321, or Tavily/OpenAI/Azure configuration.
 ---
 
 # ADR Setup
@@ -43,6 +43,15 @@ pip install selenium torch llmlingua
 ```
 
 The browser scraper requires Google Chrome. If not already installed, download it from https://www.google.com/chrome/.
+
+### Step 4: BrowseComp-Plus retriever
+
+Needs pyserini + Java 21.
+
+```bash
+pip install -e ".[bcp]"
+python scripts/download_bcp_index.py          # 2.1 GB -> third_party/bcp_indexes/bm25
+```
 
 ### Step 4: Verify
 
@@ -121,10 +130,16 @@ adr run --config configs/gpt_researcher_bench.yaml --limit 1
 adr evaluate runs/<tab-complete> --official deep_research_bench
 ```
 
-### BrowseComp
-
-Closed-ended factual questions with binary evaluation (no LLM judge).
+### BrowseComp-Plus
 
 ```bash
-adr run --config configs/gpt_researcher_browsecomp.yaml --limit 1
+adr serve-retriever                           # terminal 1, leave running
+adr run --config configs/gpt_researcher_browsecomp_plus.yaml --limit 5   # terminal 2
+```
+
+Inspect BrowseComp-Plus queries
+
+```bash
+adr queries -d browsecomp_plus --limit 10
+adr queries -d browsecomp_plus --ids 1,3,5 --show-answer
 ```
