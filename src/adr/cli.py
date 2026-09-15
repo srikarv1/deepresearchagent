@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import typer
 from rich.console import Console
@@ -60,31 +60,43 @@ def _print_summary(summary: dict[str, Any]) -> None:
 @app.command("queries")
 def queries_cmd(
     dataset: str = typer.Option("deep_research_gym", "--dataset", "-d"),
-    language: Optional[str] = typer.Option(None, "--language"),
-    limit: Optional[int] = typer.Option(None, "--limit"),
+    language: str | None = typer.Option(None, "--language"),
+    limit: int | None = typer.Option(None, "--limit"),
+    ids: str | None = typer.Option(None, "--ids", help="Comma-separated query ids"),
+    show_answer: bool = typer.Option(
+        False, "--show-answer", help="Show metadata answer (BrowseComp-Plus)"
+    ),
 ) -> None:
-    rows = load_queries(dataset, language=language, limit=limit)
-    table = Table(title=f"{dataset} ({len(rows)} queries)")
-    table.add_column("id")
-    table.add_column("lang")
+    """List and inspect benchmark queries."""
+    query_ids = [x.strip() for x in ids.split(",") if x.strip()] if ids else None
+    rows = load_queries(dataset, language=language, limit=limit, query_ids=query_ids)
+    table = Table(title=f"{dataset} ({len(rows)} queries)", show_lines=True)
+    table.add_column("id", no_wrap=True)
+    table.add_column("lang", no_wrap=True)
     table.add_column("text")
+    if show_answer:
+        table.add_column("answer")
     for row in rows:
-        text = row.text if len(row.text) < 80 else row.text[:77] + "..."
-        table.add_row(row.id, row.language, text)
+        cols = [row.id, row.language, row.text]
+        if show_answer:
+            cols.append(str(row.metadata.get("answer", "")))
+        table.add_row(*cols)
     console.print(table)
 
 
 @app.command("run")
 def run_cmd(
     config: Path = typer.Option(Path("configs/default.yaml"), "--config", "-c"),
-    dataset: Optional[str] = typer.Option(None, "--dataset", "-d"),
-    agent: Optional[str] = typer.Option(None, "--agent", "-a"),
-    llm_provider: Optional[str] = typer.Option(None, "--llm"),
-    search_backend: Optional[str] = typer.Option(None, "--search"),
-    language: Optional[str] = typer.Option(None, "--language"),
-    limit: Optional[int] = typer.Option(None, "--limit"),
-    run_name: Optional[str] = typer.Option(None, "--run-name"),
-    official: Optional[str] = typer.Option(None, "--official", help="Comma-separated: deep_research_bench,deep_research_gym"),
+    dataset: str | None = typer.Option(None, "--dataset", "-d"),
+    agent: str | None = typer.Option(None, "--agent", "-a"),
+    llm_provider: str | None = typer.Option(None, "--llm"),
+    search_backend: str | None = typer.Option(None, "--search"),
+    language: str | None = typer.Option(None, "--language"),
+    limit: int | None = typer.Option(None, "--limit"),
+    run_name: str | None = typer.Option(None, "--run-name"),
+    official: str | None = typer.Option(
+        None, "--official", help="Comma-separated: deep_research_bench,deep_research_gym"
+    ),
 ) -> None:
     overrides: dict = {}
     if dataset:
@@ -113,16 +125,24 @@ def run_cmd(
 
 @app.command("score")
 def score_cmd(
-    report: Optional[Path] = typer.Option(None, "--report", "-r", help="File containing one report"),
-    question: Optional[str] = typer.Option(None, "--question", "-q", help="The query text"),
-    query_id: Optional[str] = typer.Option(None, "--query-id", help="Benchmark query id"),
-    reports_dir: Optional[Path] = typer.Option(None, "--reports-dir", help="Folder of <id>.q / <id>.a files"),
-    drb_jsonl: Optional[Path] = typer.Option(None, "--drb-jsonl", help="DRB raw file of {id,prompt,article} rows"),
+    report: Path | None = typer.Option(None, "--report", "-r", help="File containing one report"),
+    question: str | None = typer.Option(None, "--question", "-q", help="The query text"),
+    query_id: str | None = typer.Option(None, "--query-id", help="Benchmark query id"),
+    reports_dir: Path | None = typer.Option(
+        None, "--reports-dir", help="Folder of <id>.q / <id>.a files"
+    ),
+    drb_jsonl: Path | None = typer.Option(
+        None, "--drb-jsonl", help="DRB raw file of {id,prompt,article} rows"
+    ),
     dataset: str = typer.Option("deep_research_gym", "--dataset", "-d"),
-    official: Optional[str] = typer.Option(None, "--official", help="Benches to judge with; defaults to --dataset"),
-    judge_model: Optional[str] = typer.Option(None, "--judge-model"),
-    run_dir: Optional[Path] = typer.Option(None, "--run-dir", help="Where to write artifacts"),
-    local_only: bool = typer.Option(False, "--local-only", help="Skip the judges, cost metrics only"),
+    official: str | None = typer.Option(
+        None, "--official", help="Benches to judge with; defaults to --dataset"
+    ),
+    judge_model: str | None = typer.Option(None, "--judge-model"),
+    run_dir: Path | None = typer.Option(None, "--run-dir", help="Where to write artifacts"),
+    local_only: bool = typer.Option(
+        False, "--local-only", help="Skip the judges, cost metrics only"
+    ),
 ) -> None:
     """Score reports the harness did not produce, including a single hand-written one."""
     if reports_dir:
@@ -146,7 +166,9 @@ def score_cmd(
                 dataset=dataset,
             )
         ]
-        console.print(f"[dim]query id[/dim] {resolved_id}  [dim]question[/dim] {resolved_question[:90]}")
+        console.print(
+            f"[dim]query id[/dim] {resolved_id}  [dim]question[/dim] {resolved_question[:90]}"
+        )
     else:
         raise typer.BadParameter("Pass one of --report, --reports-dir, or --drb-jsonl")
 
@@ -166,8 +188,10 @@ def score_cmd(
 @app.command("evaluate")
 def evaluate_cmd(
     run_dir: Path = typer.Argument(..., exists=True, file_okay=False),
-    official: str = typer.Option("", "--official", help="Comma-separated benches, or empty for local metrics only"),
-    config: Optional[Path] = typer.Option(None, "--config", "-c"),
+    official: str = typer.Option(
+        "", "--official", help="Comma-separated benches, or empty for local metrics only"
+    ),
+    config: Path | None = typer.Option(None, "--config", "-c"),
 ) -> None:
     cfg = load_config(config) if config else {}
     summary = evaluate_run_dir(run_dir, official_benches=_benches(official), config=cfg)
@@ -296,13 +320,17 @@ def doctor_cmd() -> None:
 
 @app.command("serve-retriever")
 def serve_retriever_cmd(
-    index: Optional[str] = typer.Option(
-        None, "--index", help="Lucene index dir (default: ADR_BCP_INDEX or third_party/bcp_indexes/bm25)"
+    index: str | None = typer.Option(
+        None,
+        "--index",
+        help="Lucene index dir (default: ADR_BCP_INDEX or third_party/bcp_indexes/bm25)",
     ),
     host: str = typer.Option("127.0.0.1", "--host"),
     port: int = typer.Option(8321, "--port"),
     k: int = typer.Option(5, "--k", help="Default hits per query when the client sends no k"),
-    max_chars: int = typer.Option(0, "--max-chars", help="Truncate raw_content (0 = full document)"),
+    max_chars: int = typer.Option(
+        16000, "--max-chars", help="Truncate raw_content per doc (0 = full document)"
+    ),
 ) -> None:
     """Serve the BrowseComp-Plus BM25 corpus for gpt-researcher's RETRIEVER=custom."""
     from adr.tools.bcp_server import serve
