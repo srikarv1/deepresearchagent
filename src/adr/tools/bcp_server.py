@@ -5,14 +5,18 @@ gpt-researcher's ``RETRIEVER=custom`` does ``GET $RETRIEVER_ENDPOINT?query=...``
 ``RETRIEVER_ARG_K=5`` -> ``k=5``) and expects a JSON list of
 ``{"url": ..., "raw_content": ...}``; with ``raw_content`` present it skips
 scraping. Serving the corpus this way means gpt-researcher itself needs no
-changes, and pyserini + the JVM live in this process only.
+changes, and pyserini + the JVM (and, for dense, numpy + Ollama) live in this
+process only.
 
 Routes (all GET):
   /search?query=<q>&k=<n>   ranked hits, one object per document
   /doc?docid=<id>           full text of one document, 404 if unknown
-  /health                   index path and document count
+  /health                   retriever, index path, document count
 
-Run with ``adr serve-retriever`` and point the agent at it::
+``adr serve-retriever`` is BM25. ``adr serve-retriever --retriever dense``
+ranks with official Qwen3-Embedding-0.6B shards and encodes queries through
+Ollama; Lucene still supplies ``raw_content``. Point the agent at the same
+endpoint either way::
 
     retriever: custom
     env:
@@ -110,11 +114,18 @@ def make_handler(
 
         def _health(self) -> dict[str, Any]:
             index = backend._get_index()  # noqa: SLF001 (same package)
-            return {
+            payload: dict[str, Any] = {
                 "status": "ok",
+                "retriever": getattr(backend, "retriever", "bm25"),
                 "index_path": str(backend.index_path),
                 "num_docs": getattr(index, "num_docs", None),
             }
+            dense_path = getattr(backend, "dense_path", None)
+            if dense_path is not None:
+                payload["dense_path"] = str(dense_path)
+                payload["dim"] = getattr(index, "dim", None)
+                payload["embed_model"] = getattr(backend, "embed_model", None)
+            return payload
 
         def _send(self, status: HTTPStatus, body: Any) -> None:
             data = json.dumps(body, ensure_ascii=False).encode("utf-8")
@@ -150,15 +161,30 @@ def serve(
     port: int = DEFAULT_PORT,
     default_k: int = 5,
     max_chars: int = 0,
+    retriever: str = "bm25",
+    dense_path: str | None = None,
+    embed_model: str | None = None,
+    embed_base_url: str | None = None,
+    query_prefix: str | None = None,
 ) -> None:
-    backend = BrowseCompPlusSearch(index_path=index_path)
-    print(f"loading {backend.index_path} ...", file=sys.stderr, flush=True)
-    backend.warm_up()  # fail fast on a missing index / JDK before binding the port
+    backend = BrowseCompPlusSearch(
+        index_path=index_path,
+        retriever=retriever,
+        dense_path=dense_path,
+        embed_model=embed_model,
+        embed_base_url=embed_base_url,
+        query_prefix=query_prefix,
+    )
+    kind = backend.retriever
+    where = backend.dense_path if kind == "dense" else backend.index_path
+    print(f"loading {kind} {where} ...", file=sys.stderr, flush=True)
+    backend.warm_up()  # fail fast on a missing index / JDK / Ollama before binding the port
     server = make_server(
         backend, host=host, port=port, default_k=default_k, max_chars=max_chars
     )
+    extra = f" embed={backend.embed_model}" if kind == "dense" else ""
     print(
-        f"serving BrowseComp-Plus BM25 on http://{host}:{port}/search (k={default_k})",
+        f"serving BrowseComp-Plus {kind}{extra} on http://{host}:{port}/search (k={default_k})",
         file=sys.stderr,
         flush=True,
     )

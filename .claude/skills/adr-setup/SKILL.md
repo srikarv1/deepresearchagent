@@ -1,6 +1,6 @@
 ---
 name: adr-setup
-description: Set up the deepresearchagent (adr) development environment and run benchmarks. Use when the user asks about installation, environment variables, API keys, bootstrap, deploying models, running DRB or BrowseComp-Plus benchmarks, the BrowseComp-Plus retriever server or BM25 index, or getting the project running for the first time. Also use when the user hits errors related to missing keys, missing modules, pyserini/Java, a missing Lucene index, a refused connection to 127.0.0.1:8321, or Tavily/OpenAI/Azure configuration.
+description: Set up the deepresearchagent (adr) development environment and run benchmarks. Use when the user asks about installation, environment variables, API keys, bootstrap, deploying models, running DRB or BrowseComp-Plus benchmarks, the BrowseComp-Plus retriever server, BM25 or dense Qwen3-Embedding/Ollama index, or getting the project running for the first time. Also use when the user hits errors related to missing keys, missing modules, pyserini/Java, a missing Lucene index, a refused connection to 127.0.0.1:8321, Ollama embeddings, or Tavily/OpenAI/Azure configuration.
 ---
 
 # ADR Setup
@@ -46,11 +46,13 @@ The browser scraper requires Google Chrome. If not already installed, download i
 
 ### Step 4: BrowseComp-Plus retriever
 
-Needs pyserini + Java 21.
+Needs pyserini + Java 21. Dense ranking also needs numpy (pulled in by `[bcp]`), the Tevatron 0.6B shards, and Ollama.
 
 ```bash
 pip install -e ".[bcp]"
-python scripts/download_bcp_index.py          # 2.1 GB -> third_party/bcp_indexes/bm25
+python scripts/download_bcp_index.py                 # 2.1 GB Lucene text
+python scripts/download_bcp_index.py --kind dense    # 0.41 GB Qwen3-Embedding-0.6B shards
+ollama pull qwen3-embedding:0.6b                     # CPU query encoder; must match the shard
 ```
 
 ### Step 4: Verify
@@ -132,13 +134,35 @@ adr evaluate runs/<tab-complete> --official deep_research_bench
 
 ### BrowseComp-Plus
 
+BM25 (keyword overlap; weak on obfuscated BrowseComp questions):
+
 ```bash
 adr serve-retriever                           # terminal 1, leave running
 adr run --config configs/gpt_researcher_browsecomp_plus.yaml --limit 5   # terminal 2
 adr evaluate runs/<tab-complete> --official browsecomp_plus
 ```
 
-The gpt-researcher fork must write a short `Exact Answer:` (set `GR_ANSWER_FORMAT=browsecomp` in `configs/agents/gpt_researcher_browsecomp_plus.yaml`; needs the `srikar/browsecomp-plus-short-answer` branch or a merge of it). A 2000-word research report is scored wrong even when the fact is in the text.
+Dense (official Qwen3-Embedding-0.6B vectors + Ollama query encode). Caption Acc/Recall as dense-0.6B, not the BM25 leaderboard row. Lucene is still required for document text.
+
+```bash
+adr serve-retriever --retriever dense         # terminal 1
+adr run --config configs/gpt_researcher_browsecomp_plus_dense.yaml --limit 5
+adr evaluate runs/<tab-complete> --official browsecomp_plus
+```
+
+Paper table rows are one frozen agent × `GR_ORCHESTRATOR` (needs the fork orchestration branch). Official Recall is retrieved ∩ evidence; pruning does not change it.
+
+```bash
+# terminal 1 stays on --retriever dense
+for pol in none topk extractive llmlingua prompted; do
+  GR_ORCHESTRATOR=$pol adr run \
+    --config configs/gpt_researcher_browsecomp_plus_dense.yaml \
+    --run-name "bcp-dense-${pol}"
+  adr evaluate runs/*-bcp-dense-${pol} --official browsecomp_plus
+done
+```
+
+The gpt-researcher fork must write a short `Exact Answer:` (set `GR_ANSWER_FORMAT=browsecomp` in `configs/agents/gpt_researcher_browsecomp_plus.yaml`; needs the `srikar/browsecomp-plus-short-answer` branch or a merge of it). A 2000-word research report is scored wrong even when the fact is in the text. Both that PR and the orchestration PR must be on the installed fork to fill the table.
 
 Inspect BrowseComp-Plus queries
 

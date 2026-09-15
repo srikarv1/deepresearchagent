@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,7 @@ from adr.eval.importers import (
     write_trajectories,
 )
 from adr.eval.repos import (
+    find_bcp_dense_index,
     find_bcp_index,
     find_deep_research_bench,
     find_deep_research_gym,
@@ -237,8 +239,6 @@ def compare_cmd(
 @app.command("doctor")
 def doctor_cmd() -> None:
     """Report whether the official judge repos and API keys are usable."""
-    import os
-
     table = Table(title="Evaluation prerequisites")
     table.add_column("check")
     table.add_column("status")
@@ -290,12 +290,20 @@ def doctor_cmd() -> None:
         "[green]found[/green]" if bcp.ok else "[yellow]missing[/yellow]",
         str(bcp.path or bcp.reason),
     )
+    dense = find_bcp_dense_index()
+    table.add_row(
+        "BrowseComp-Plus dense index (Qwen3-Embedding-0.6B)",
+        "[green]found[/green]" if dense.ok else "[yellow]missing[/yellow]",
+        str(dense.path or dense.reason),
+    )
     try:
         import importlib.util
 
         has_pyserini = importlib.util.find_spec("pyserini") is not None
+        has_numpy = importlib.util.find_spec("numpy") is not None
     except Exception:
         has_pyserini = False
+        has_numpy = False
     import shutil
 
     java = shutil.which("java")
@@ -303,6 +311,17 @@ def doctor_cmd() -> None:
         "pyserini + java (BrowseComp-Plus retriever)",
         "[green]yes[/green]" if (has_pyserini and java) else "[yellow]no[/yellow]",
         f"java={java or 'missing'}; " + ("" if has_pyserini else r"pip install -e '.\[bcp]'"),
+    )
+    table.add_row(
+        "numpy (dense ranking)",
+        "[green]yes[/green]" if has_numpy else "[yellow]no[/yellow]",
+        "" if has_numpy else r"pip install -e '.\[bcp]'",
+    )
+    ollama_host = os.environ.get("OLLAMA_HOST") or "http://127.0.0.1:11434"
+    table.add_row(
+        "Ollama (dense query encoder)",
+        "[green]up[/green]" if _ollama_reachable(ollama_host) else "[yellow]down[/yellow]",
+        ollama_host,
     )
 
     for name, used_for in (
@@ -325,6 +344,26 @@ def serve_retriever_cmd(
         "--index",
         help="Lucene index dir (default: ADR_BCP_INDEX or third_party/bcp_indexes/bm25)",
     ),
+    retriever: str | None = typer.Option(
+        None,
+        "--retriever",
+        help="bm25 (default) or dense (Qwen3-Embedding shards + Ollama query encoder)",
+    ),
+    dense_index: str | None = typer.Option(
+        None,
+        "--dense-index",
+        help="Tevatron pickle/npz dir (default: ADR_BCP_DENSE or third_party/bcp_indexes/qwen3-embedding-0.6b)",
+    ),
+    embed_model: str | None = typer.Option(
+        None,
+        "--embed-model",
+        help="Ollama embedding tag (default: ADR_BCP_EMBED_MODEL or qwen3-embedding:0.6b)",
+    ),
+    embed_base_url: str | None = typer.Option(
+        None,
+        "--embed-base-url",
+        help="Ollama base URL (default: OLLAMA_HOST or http://127.0.0.1:11434)",
+    ),
     host: str = typer.Option("127.0.0.1", "--host"),
     port: int = typer.Option(8321, "--port"),
     k: int = typer.Option(5, "--k", help="Default hits per query when the client sends no k"),
@@ -332,10 +371,33 @@ def serve_retriever_cmd(
         16000, "--max-chars", help="Truncate raw_content per doc (0 = full document)"
     ),
 ) -> None:
-    """Serve the BrowseComp-Plus BM25 corpus for gpt-researcher's RETRIEVER=custom."""
+    """Serve the BrowseComp-Plus corpus for gpt-researcher's RETRIEVER=custom."""
     from adr.tools.bcp_server import serve
 
-    serve(index_path=index, host=host, port=port, default_k=k, max_chars=max_chars)
+    chosen = (retriever or os.environ.get("ADR_BCP_RETRIEVER") or "bm25").lower()
+    serve(
+        index_path=index,
+        host=host,
+        port=port,
+        default_k=k,
+        max_chars=max_chars,
+        retriever=chosen,
+        dense_path=dense_index,
+        embed_model=embed_model,
+        embed_base_url=embed_base_url,
+    )
+
+
+def _ollama_reachable(base_url: str) -> bool:
+    from urllib.error import URLError
+    from urllib.request import urlopen
+
+    url = base_url.rstrip("/") + "/api/tags"
+    try:
+        with urlopen(url, timeout=1.5) as resp:
+            return 200 <= getattr(resp, "status", 200) < 300
+    except (URLError, TimeoutError, OSError):
+        return False
 
 
 @app.command("bootstrap")

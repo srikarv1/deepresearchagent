@@ -6,7 +6,9 @@ concurrency: 1
 # BrowseComp-Plus is defined over the fixed Tevatron/browsecomp-plus-corpus,
 # so retrieval goes through the harness's BM25 server instead of the live web.
 # Start it first (loads the Lucene index once, ~10 s):
-#   adr serve-retriever            # http://127.0.0.1:8321/search
+#   adr serve-retriever                         # BM25
+#   adr serve-retriever --retriever dense       # Qwen3-Embedding-0.6B + Ollama
+# Same endpoint either way. Caption Acc/Recall by whichever server you started.
 # gpt-researcher's `custom` retriever calls that endpoint and takes the
 # returned raw_content as-is, so no scraping happens (scraper is inert). Hits
 # are bcp://<docid> URLs; the wrapper collects them into

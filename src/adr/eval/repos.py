@@ -133,3 +133,18 @@ def find_bcp_index(explicit: str | Path | None = None) -> RepoLocation:
     if index_looks_valid(path):
         return RepoLocation(path.resolve())
     return RepoLocation(None, f"no Lucene index at {path} (set {INDEX_ENV} or run {INDEX_HELP})")
+
+
+def find_bcp_dense_index(explicit: str | Path | None = None) -> RepoLocation:
+    """Locate Tevatron Qwen3-Embedding corpus shards for dense BrowseComp-Plus search."""
+    from adr.tools.bcp_dense import (
+        DENSE_ENV,
+        DENSE_HELP,
+        dense_index_looks_valid,
+        resolve_dense_path,
+    )
+
+    path = resolve_dense_path(explicit)
+    if dense_index_looks_valid(path):
+        return RepoLocation(path.resolve())
+    return RepoLocation(None, f"no dense shards at {path} (set {DENSE_ENV} or run {DENSE_HELP})")

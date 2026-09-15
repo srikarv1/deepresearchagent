@@ -1,17 +1,17 @@
 #!/usr/bin/env python
-"""Download the BrowseComp-Plus BM25 Lucene index (Tevatron/browsecomp-plus-indexes).
+"""Download BrowseComp-Plus indexes from Tevatron/browsecomp-plus-indexes.
 
-Fetches the ``bm25/`` directory (~2.1 GB, the stored document text is most of
-it) at a pinned revision into ``third_party/bcp_indexes/bm25``, which is where
-``adr serve-retriever``, ``search.backend: browsecomp_plus`` and ``adr doctor``
-look by default. Files that already exist with the right size are skipped, so
-re-running after an interrupted download only fetches what is missing.
+``bm25/`` (~2.1 GB) is the Lucene index that stores document text. The dense
+``qwen3-embedding-0.6b/`` shards (~0.41 GB) are official corpus vectors for
+the Qwen3-Embedding-0.6B row. Query encoding is *not* downloaded: serve those
+with Ollama (``ollama pull qwen3-embedding:0.6b``).
 
-Standard library only; no huggingface_hub needed. The dense (Qwen3-Embedding)
-indexes are not fetched: they need a GPU to encode queries and are not used by
-the harness yet.
+Files that already exist with the right size are skipped, so re-running after
+an interrupted download only fetches what is missing.
 
-    python scripts/download_bcp_index.py
+    python scripts/download_bcp_index.py                  # BM25 (default)
+    python scripts/download_bcp_index.py --kind dense     # 0.6B shards
+    python scripts/download_bcp_index.py --kind all
     python scripts/download_bcp_index.py --dest /data/bcp/bm25   # then set ADR_BCP_INDEX
 """
 
@@ -27,8 +27,9 @@ from pathlib import Path
 REPO = "Tevatron/browsecomp-plus-indexes"
 # Pinned so every checkout searches the same index; bump deliberately.
 REVISION = "b3f37f70c33829eb09d04784a54277a31871fd63"
-SUBDIR = "bm25"
-DEFAULT_DEST = Path(__file__).resolve().parents[1] / "third_party" / "bcp_indexes" / SUBDIR
+INDEX_ROOT = Path(__file__).resolve().parents[1] / "third_party" / "bcp_indexes"
+DEFAULT_BM25 = INDEX_ROOT / "bm25"
+DEFAULT_DENSE_MODEL = "qwen3-embedding-0.6b"
 CHUNK = 8 * 1024 * 1024
 
 
@@ -53,35 +54,68 @@ def download(url: str, dest: Path, expected_size: int) -> None:
     tmp.replace(dest)
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
-    )
-    parser.add_argument("--dest", type=Path, default=DEFAULT_DEST)
-    parser.add_argument("--revision", default=REVISION, help=f"{REPO} commit or branch")
-    args = parser.parse_args()
-
-    files = list_files(REPO, args.revision, SUBDIR)
+def fetch_subdir(subdir: str, dest: Path, revision: str) -> None:
+    files = list_files(REPO, revision, subdir)
     total = sum(size for _, size in files)
-    args.dest.mkdir(parents=True, exist_ok=True)
-    print(f"{len(files)} files, {total / 1e9:.2f} GB -> {args.dest}", file=sys.stderr)
+    dest.mkdir(parents=True, exist_ok=True)
+    print(f"{subdir}: {len(files)} files, {total / 1e9:.2f} GB -> {dest}", file=sys.stderr)
 
     for path, size in files:
-        target = args.dest / Path(path).name
+        target = dest / Path(path).name
         if target.exists() and target.stat().st_size == size:
             print(f"skip   {target.name}", file=sys.stderr)
             continue
         print(f"fetch  {target.name} ({size / 1e6:.1f} MB)", file=sys.stderr, flush=True)
         download(
-            f"https://huggingface.co/datasets/{REPO}/resolve/{args.revision}/{path}",
+            f"https://huggingface.co/datasets/{REPO}/resolve/{revision}/{path}",
             target,
             size,
         )
 
-    if not any(p.name.startswith("segments_") for p in args.dest.iterdir()):
-        print("error: no segments_N file; this is not a Lucene index", file=sys.stderr)
-        return 1
-    print(f"ok: {args.dest}", file=sys.stderr)
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--kind",
+        choices=("bm25", "dense", "all"),
+        default="bm25",
+        help="bm25 Lucene text index, dense Qwen3-Embedding shards, or both",
+    )
+    parser.add_argument(
+        "--dense-model",
+        default=DEFAULT_DENSE_MODEL,
+        help="HF subdirectory under the indexes repo (must match the Ollama tag family)",
+    )
+    parser.add_argument("--dest", type=Path, default=None, help="Override destination directory")
+    parser.add_argument("--revision", default=REVISION, help=f"{REPO} commit or branch")
+    args = parser.parse_args()
+
+    kinds = ("bm25", "dense") if args.kind == "all" else (args.kind,)
+    for kind in kinds:
+        if kind == "bm25":
+            dest = args.dest if args.dest is not None and args.kind != "all" else DEFAULT_BM25
+            if args.kind == "all" and args.dest is not None:
+                dest = Path(args.dest) / "bm25"
+            fetch_subdir("bm25", dest, args.revision)
+            if not any(p.name.startswith("segments_") for p in dest.iterdir()):
+                print("error: no segments_N file; this is not a Lucene index", file=sys.stderr)
+                return 1
+            print(f"ok: {dest}", file=sys.stderr)
+        else:
+            dest = (
+                args.dest
+                if args.dest is not None and args.kind != "all"
+                else INDEX_ROOT / args.dense_model
+            )
+            if args.kind == "all" and args.dest is not None:
+                dest = Path(args.dest) / args.dense_model
+            fetch_subdir(args.dense_model, dest, args.revision)
+            if not any(p.suffix == ".pkl" or p.name == "corpus.npz" for p in dest.iterdir()):
+                print("error: no corpus*.pkl / corpus.npz in dense dest", file=sys.stderr)
+                return 1
+            print(f"ok: {dest}", file=sys.stderr)
     return 0
 
 

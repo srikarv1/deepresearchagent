@@ -15,13 +15,16 @@ time without teaching each agent about corpus ids.
 
 Prerequisites::
 
-    pip install -e '.[bcp]'          # pyserini; needs a Java 21 JDK on PATH
-    python scripts/download_bcp_index.py   # 2.1 GB -> third_party/bcp_indexes/bm25
+    pip install -e '.[bcp]'          # pyserini + numpy; needs a Java 21 JDK on PATH
+    python scripts/download_bcp_index.py              # 2.1 GB Lucene text
+    python scripts/download_bcp_index.py --kind dense # 0.6B shards; ollama pull qwen3-embedding:0.6b
 
 The index is resolved from ``index_path`` (config), then ``ADR_BCP_INDEX``,
-then ``third_party/bcp_indexes/bm25``. Loading is lazy: constructing the
-backend never touches the JVM, so a run config can name this backend even when
-the agent under test (gpt-researcher) reaches the corpus through
+then ``third_party/bcp_indexes/bm25``. Dense ranking (``retriever: dense``)
+adds Tevatron Qwen3-Embedding shards + an Ollama query encoder; Lucene is
+still required for document text. Loading is lazy: constructing the backend
+never touches the JVM, so a run config can name this backend even when the
+agent under test (gpt-researcher) reaches the corpus through
 ``adr serve-retriever`` instead of ``ctx.search``.
 """
 
@@ -175,19 +178,59 @@ class BrowseCompPlusSearch:
         index_path: str | Path | None = None,
         snippet_chars: int = 600,
         index: CorpusIndex | None = None,
+        retriever: str = "bm25",
+        dense_path: str | Path | None = None,
+        embedder: Any | None = None,
+        embed_model: str | None = None,
+        embed_base_url: str | None = None,
+        query_prefix: str | None = None,
     ) -> None:
+        retriever = str(retriever or "bm25").lower()
+        if retriever not in {"bm25", "dense"}:
+            raise ValueError(f"unknown BrowseComp-Plus retriever {retriever!r} (bm25|dense)")
+        self.retriever = retriever
         self.index_path = resolve_index_path(index_path)
         self.snippet_chars = int(snippet_chars)
         self._index: CorpusIndex | None = index
+        self._embedder = embedder
+        self.embed_model = embed_model or os.environ.get("ADR_BCP_EMBED_MODEL")
+        self.embed_base_url = embed_base_url or os.environ.get("OLLAMA_HOST")
+        self.query_prefix = query_prefix
+        self.dense_path = None
+        if retriever == "dense":
+            from adr.tools.bcp_dense import DEFAULT_EMBED_MODEL, resolve_dense_path
+
+            self.dense_path = resolve_dense_path(dense_path)
+            self.embed_model = self.embed_model or DEFAULT_EMBED_MODEL
         # One worker: the JVM is started and used from a single thread, and
-        # Lucene calls are serialised without a lock. BM25 lookups are ~10 ms.
-        self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="bcp-lucene")
+        # Lucene calls are serialised without a lock. Dense adds one Ollama
+        # embed + a numpy matmul on that same thread.
+        self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="bcp-index")
 
     # Blocking API (used by the HTTP server and by the async wrappers).
     def _get_index(self) -> CorpusIndex:
         if self._index is None:
-            self._index = LuceneIndex(self.index_path)
+            self._index = LuceneIndex(self.index_path) if self.retriever == "bm25" else self._load_dense()
         return self._index
+
+    def _load_dense(self) -> CorpusIndex:
+        from adr.tools.bcp_dense import DenseCorpusIndex, NumpyDenseIndex, OllamaEmbedder
+
+        if not index_looks_valid(self.index_path):
+            raise FileNotFoundError(
+                f"Dense ranking uses vectors at {self.dense_path} but still reads "
+                f"document text from the BM25 Lucene index at {self.index_path}. "
+                f"{INDEX_HELP}"
+            )
+        dense = NumpyDenseIndex.from_dir(self.dense_path or "")
+        embedder = self._embedder or OllamaEmbedder(
+            model=self.embed_model or "",
+            base_url=self.embed_base_url,
+            prefix=self.query_prefix,
+        )
+        return DenseCorpusIndex(
+            dense=dense, embedder=embedder, text_index=LuceneIndex(self.index_path)
+        )
 
     def _search_blocking(self, query: str, k: int) -> list[SearchHit]:
         hits: list[SearchHit] = []
@@ -217,9 +260,22 @@ class BrowseCompPlusSearch:
     def fetch_sync(self, url: str) -> str:
         return self._pool.submit(self._fetch_blocking, url).result()
 
+    def _warm(self) -> None:
+        index = self._get_index()
+        embedder = getattr(index, "embedder", None)
+        dim = getattr(index, "dim", None)
+        if embedder is None or dim is None:
+            return
+        vec = embedder.embed_query("warmup")
+        if len(vec) != int(dim):
+            raise ValueError(
+                f"query dim {len(vec)} != corpus dim {dim}; "
+                "the Ollama model must match the dense shard (0.6B vs 4B vs 8B)"
+            )
+
     def warm_up(self) -> None:
-        """Load the index now (JVM start + segment open) instead of on first query."""
-        self._pool.submit(self._get_index).result()
+        """Load the index now (JVM / pickle / Ollama ping) instead of on first query."""
+        self._pool.submit(self._warm).result()
 
     # SearchBackend protocol.
     async def search(self, query: str, k: int = 5) -> list[SearchHit]:
