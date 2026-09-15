@@ -49,6 +49,16 @@ INDEX_HELP = (
 _FRONT_MATTER = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
 _TITLE = re.compile(r"^title:\s*(.+?)\s*$", re.MULTILINE)
 
+DENSE_INDEX_ENV = "ADR_BCP_DENSE_INDEX"
+INDEXES_ROOT = ROOT / "third_party" / "bcp_indexes"
+DEFAULT_OLLAMA_URL = "http://localhost:11434"
+DEFAULT_DENSE_MODEL = "qwen3-embedding:0.6b"
+# Same prefix Tevatron used to encode the published indexes.
+DENSE_TASK_PREFIX = (
+    "Instruct: Given a web search query, retrieve relevant passages "
+    "that answer the query\nQuery:"
+)
+
 
 # ── docid <-> url ─────────────────────────────────────────────────
 
@@ -156,6 +166,145 @@ class LuceneIndex:
         return None if doc is None else contents_from_raw(doc.raw())
 
 
+# ── dense (Ollama + FAISS) ─────────────────────────────────────────
+
+
+def dense_index_subdir(model: str) -> str:
+    """``qwen3-embedding:0.6b`` -> ``qwen3-embedding-0.6b`` (upstream layout)."""
+    return model.replace(":", "-").replace("/", "-").lower()
+
+
+def resolve_dense_index_glob(
+    explicit: str | Path | None = None, model: str = DEFAULT_DENSE_MODEL
+) -> str:
+    raw = explicit or os.environ.get(DENSE_INDEX_ENV) or (INDEXES_ROOT / dense_index_subdir(model))
+    path = Path(raw).expanduser()
+    if not path.is_absolute():
+        path = ROOT / path
+    if path.is_dir() or not path.name.endswith(".pkl"):
+        return str(path / "corpus.shard*.pkl")
+    return str(path)
+
+
+def dense_shard_paths(pattern: str) -> list[Path]:
+    import glob as _glob
+
+    return sorted(Path(p) for p in _glob.glob(pattern))
+
+
+def dense_index_looks_valid(pattern: str) -> bool:
+    return bool(dense_shard_paths(pattern))
+
+
+def load_dense_shards(paths: Iterable[Path]) -> tuple[Any, list[str]]:
+    """Load Tevatron ``(reps, lookup)`` pickles into one float32 matrix + docid list."""
+    import pickle
+
+    import numpy as np
+
+    reps: list[Any] = []
+    lookup: list[str] = []
+    for path in paths:
+        with open(path, "rb") as fh:
+            shard_reps, shard_lookup = pickle.load(fh)
+        reps.append(np.asarray(shard_reps, dtype=np.float32))
+        lookup.extend(str(d) for d in shard_lookup)
+    if not reps:
+        raise FileNotFoundError("no dense index shards to load")
+    return np.concatenate(reps), lookup
+
+
+class OllamaEncoder:
+    """Encode queries via Ollama's /api/embed endpoint. No torch needed."""
+
+    def __init__(
+        self,
+        model: str = DEFAULT_DENSE_MODEL,
+        *,
+        ollama_url: str = DEFAULT_OLLAMA_URL,
+        task_prefix: str = DENSE_TASK_PREFIX,
+    ) -> None:
+        self.model = model
+        self.ollama_url = ollama_url.rstrip("/")
+        self.task_prefix = task_prefix
+
+    def __call__(self, query: str) -> Any:
+        import json as _json
+        import urllib.request
+
+        import numpy as np
+
+        body = _json.dumps({
+            "model": self.model,
+            "input": self.task_prefix + query,
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            f"{self.ollama_url}/api/embed",
+            data=body,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            data = _json.load(resp)
+        vec = np.array(data["embeddings"][0], dtype=np.float32).reshape(1, -1)
+        norm = np.linalg.norm(vec)
+        if norm > 0:
+            vec /= norm
+        return vec
+
+
+class DenseIndex:
+    """FAISS inner-product search over Tevatron shards, queries via Ollama.
+
+    ``text_source`` (normally the BM25 ``LuceneIndex``) supplies document
+    text, because the shards contain vectors and docids only.
+    """
+
+    def __init__(
+        self,
+        index_glob: str,
+        *,
+        model: str = DEFAULT_DENSE_MODEL,
+        text_source: CorpusIndex | None = None,
+        encoder: Any | None = None,
+        ollama_url: str = DEFAULT_OLLAMA_URL,
+    ) -> None:
+        paths = dense_shard_paths(index_glob)
+        if not paths:
+            raise FileNotFoundError(
+                f"BrowseComp-Plus dense index not found at {index_glob}. "
+                f"python scripts/download_bcp_index.py --subdir {dense_index_subdir(model)}"
+            )
+        import numpy as np
+
+        reps, self._lookup = load_dense_shards(paths)
+        self._reps = np.ascontiguousarray(reps)  # (N, dim) float32
+        self.model_name = model
+        self._encoder = encoder or OllamaEncoder(model, ollama_url=ollama_url)
+        self._text = text_source
+
+    @property
+    def num_docs(self) -> int:
+        return self._reps.shape[0]
+
+    def search(self, query: str, k: int) -> list[dict[str, Any]]:
+        import numpy as np
+
+        q = self._encoder(query)  # (1, dim) float32, L2 normalised
+        scores = (self._reps @ q.T).flatten()  # inner product
+        k = min(k, len(scores))
+        top_idx = np.argpartition(-scores, k)[:k]
+        top_idx = top_idx[np.argsort(-scores[top_idx])]
+        results: list[dict[str, Any]] = []
+        for idx in top_idx:
+            docid = self._lookup[int(idx)]
+            text = (self._text.document(docid) if self._text else None) or ""
+            results.append({"docid": docid, "score": float(scores[idx]), "text": text})
+        return results
+
+    def document(self, docid: str) -> str | None:
+        return self._text.document(docid) if self._text else None
+
+
 # ── harness backend ───────────────────────────────────────────────
 
 
@@ -175,18 +324,37 @@ class BrowseCompPlusSearch:
         index_path: str | Path | None = None,
         snippet_chars: int = 600,
         index: CorpusIndex | None = None,
+        searcher: str = "bm25",
+        model: str = DEFAULT_DENSE_MODEL,
+        dense_index_path: str | Path | None = None,
+        ollama_url: str = DEFAULT_OLLAMA_URL,
     ) -> None:
+        if searcher not in {"bm25", "dense"}:
+            raise ValueError(f"searcher must be 'bm25' or 'dense', got {searcher!r}")
         self.index_path = resolve_index_path(index_path)
+        self.searcher = searcher
+        self.model = model
+        self.dense_index_glob = resolve_dense_index_glob(dense_index_path, model)
+        self.ollama_url = ollama_url
         self.snippet_chars = int(snippet_chars)
         self._index: CorpusIndex | None = index
-        # One worker: the JVM is started and used from a single thread, and
-        # Lucene calls are serialised without a lock. BM25 lookups are ~10 ms.
-        self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="bcp-lucene")
+        # One worker: the JVM (and for dense, the FAISS search) is used from
+        # a single thread. BM25 ~10 ms; Ollama encode ~50-200 ms on CPU.
+        self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="bcp-index")
 
     # Blocking API (used by the HTTP server and by the async wrappers).
     def _get_index(self) -> CorpusIndex:
         if self._index is None:
-            self._index = LuceneIndex(self.index_path)
+            lucene = LuceneIndex(self.index_path)
+            if self.searcher == "dense":
+                self._index = DenseIndex(
+                    self.dense_index_glob,
+                    model=self.model,
+                    text_source=lucene,
+                    ollama_url=self.ollama_url,
+                )
+            else:
+                self._index = lucene
         return self._index
 
     def _search_blocking(self, query: str, k: int) -> list[SearchHit]:

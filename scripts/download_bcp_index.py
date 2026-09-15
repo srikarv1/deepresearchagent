@@ -1,17 +1,17 @@
 #!/usr/bin/env python
-"""Download the BrowseComp-Plus BM25 Lucene index (Tevatron/browsecomp-plus-indexes).
+"""Download a BrowseComp-Plus index (Tevatron/browsecomp-plus-indexes).
 
-Fetches the ``bm25/`` directory (~2.1 GB, the stored document text is most of
-it) at a pinned revision into ``third_party/bcp_indexes/bm25``, which is where
-``adr serve-retriever``, ``search.backend: browsecomp_plus`` and ``adr doctor``
-look by default. Files that already exist with the right size are skipped, so
-re-running after an interrupted download only fetches what is missing.
+Fetches the requested index at a pinned revision into
+``third_party/bcp_indexes/<subdir>``. BM25 (~2.1 GB) is required for all
+runs (it also stores document text used by the dense searcher). Dense shards
+(``qwen3-embedding-*``, 0.4 GB for 0.6B) are optional and only needed for
+``adr serve-retriever --searcher dense``.
 
-Standard library only; no huggingface_hub needed. The dense (Qwen3-Embedding)
-indexes are not fetched: they need a GPU to encode queries and are not used by
-the harness yet.
+Files that already exist with the right size are skipped, so re-running after
+an interrupted download only fetches what is missing. Standard library only.
 
     python scripts/download_bcp_index.py
+    python scripts/download_bcp_index.py --subdir qwen3-embedding-0.6b
     python scripts/download_bcp_index.py --dest /data/bcp/bm25   # then set ADR_BCP_INDEX
 """
 
@@ -28,7 +28,7 @@ REPO = "Tevatron/browsecomp-plus-indexes"
 # Pinned so every checkout searches the same index; bump deliberately.
 REVISION = "b3f37f70c33829eb09d04784a54277a31871fd63"
 SUBDIR = "bm25"
-DEFAULT_DEST = Path(__file__).resolve().parents[1] / "third_party" / "bcp_indexes" / SUBDIR
+DEST_ROOT = Path(__file__).resolve().parents[1] / "third_party" / "bcp_indexes"
 CHUNK = 8 * 1024 * 1024
 
 
@@ -57,17 +57,24 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("--dest", type=Path, default=DEFAULT_DEST)
+    parser.add_argument(
+        "--subdir",
+        default=SUBDIR,
+        help="bm25 (default) | qwen3-embedding-0.6b | qwen3-embedding-4b | qwen3-embedding-8b",
+    )
+    parser.add_argument("--dest", type=Path, default=None, help=f"default: {DEST_ROOT}/<subdir>")
     parser.add_argument("--revision", default=REVISION, help=f"{REPO} commit or branch")
     args = parser.parse_args()
 
-    files = list_files(REPO, args.revision, SUBDIR)
+    dest: Path = args.dest or DEST_ROOT / args.subdir
+
+    files = list_files(REPO, args.revision, args.subdir)
     total = sum(size for _, size in files)
-    args.dest.mkdir(parents=True, exist_ok=True)
-    print(f"{len(files)} files, {total / 1e9:.2f} GB -> {args.dest}", file=sys.stderr)
+    dest.mkdir(parents=True, exist_ok=True)
+    print(f"{len(files)} files, {total / 1e9:.2f} GB -> {dest}", file=sys.stderr)
 
     for path, size in files:
-        target = args.dest / Path(path).name
+        target = dest / Path(path).name
         if target.exists() and target.stat().st_size == size:
             print(f"skip   {target.name}", file=sys.stderr)
             continue
@@ -78,10 +85,14 @@ def main() -> int:
             size,
         )
 
-    if not any(p.name.startswith("segments_") for p in args.dest.iterdir()):
-        print("error: no segments_N file; this is not a Lucene index", file=sys.stderr)
+    if args.subdir == "bm25":
+        if not any(p.name.startswith("segments_") for p in dest.iterdir()):
+            print("error: no segments_N file; this is not a Lucene index", file=sys.stderr)
+            return 1
+    elif not any(p.name.endswith(".pkl") for p in dest.iterdir()):
+        print("error: no corpus.shard*.pkl files; this is not a dense index", file=sys.stderr)
         return 1
-    print(f"ok: {args.dest}", file=sys.stderr)
+    print(f"ok: {dest}", file=sys.stderr)
     return 0
 
 

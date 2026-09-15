@@ -1,6 +1,6 @@
 ---
 name: adr-setup
-description: Set up the deepresearchagent (adr) development environment and run benchmarks. Use when the user asks about installation, environment variables, API keys, bootstrap, deploying models, running DRB or BrowseComp-Plus benchmarks, the BrowseComp-Plus retriever server or BM25 index, or getting the project running for the first time. Also use when the user hits errors related to missing keys, missing modules, pyserini/Java, a missing Lucene index, a refused connection to 127.0.0.1:8321, or Tavily/OpenAI/Azure configuration.
+description: Set up the deepresearchagent (adr) development environment and run benchmarks. Use when the user asks about installation, environment variables, API keys, bootstrap, deploying models, running DRB or BrowseComp-Plus benchmarks, the BrowseComp-Plus retriever server (BM25 or dense), Ollama embedding, or getting the project running for the first time. Also use when the user hits errors related to missing keys, missing modules, pyserini/Java, a missing Lucene index, a refused connection to 127.0.0.1:8321, Ollama not running, faiss-cpu missing, or Tavily/OpenAI/Azure configuration.
 ---
 
 # ADR Setup
@@ -46,18 +46,29 @@ The browser scraper requires Google Chrome. If not already installed, download i
 
 ### Step 4: BrowseComp-Plus retriever
 
-Needs pyserini + Java 21.
+**BM25 (required for all BrowseComp-Plus runs).** Needs pyserini + Java 21.
 
 ```bash
 pip install -e ".[bcp]"
 python scripts/download_bcp_index.py          # 2.1 GB -> third_party/bcp_indexes/bm25
 ```
 
-### Step 4: Verify
+**Dense retriever.** Uses Ollama for query encoding.
+
+```bash
+ollama pull qwen3-embedding:0.6b
+python scripts/download_bcp_index.py --subdir qwen3-embedding-0.6b   # 0.4 GB shards
+```
+
+The BM25 index is still required when using dense (it stores document text).
+
+### Step 5: Verify
 
 ```bash
 adr doctor
 ```
+
+For BrowseComp-Plus the `BM25 index` and `pyserini + java` rows must be green. For dense, also check `dense index` and `faiss-cpu`.
 
 ## Environment variables
 
@@ -105,7 +116,8 @@ export GR_ORCHESTRATOR="topk"            # none | topk | extractive | llmlingua 
 Before running, ask the user:
 
 1. Have you deployed the models specified in `STRATEGIC_LLM`, `SMART_LLM`, `FAST_LLM`, and `EMBEDDING` on your Azure Foundry account?
-2. Are `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `TAVILY_API_KEY`, and `JINA_API_KEY` set?
+2. DRB: are `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `TAVILY_API_KEY`, and `JINA_API_KEY` set?
+3. BrowseComp-Plus: are `OPENAI_API_KEY` and `OPENAI_BASE_URL` set, and is `adr serve-retriever` running? For dense, is Ollama running (`ollama list` should show `qwen3-embedding:0.6b`)?
 
 Check programmatically:
 
@@ -119,6 +131,7 @@ if missing:
     sys.exit(1)
 print('all keys set')
 "
+curl -sf http://127.0.0.1:8321/health      # BrowseComp-Plus only
 ```
 
 ## Running benchmarks
@@ -133,14 +146,21 @@ adr evaluate runs/<tab-complete> --official deep_research_bench
 ### BrowseComp-Plus
 
 ```bash
-adr serve-retriever                           # terminal 1, leave running
-adr run --config configs/gpt_researcher_browsecomp_plus.yaml --limit 5   # terminal 2
+# terminal 1, pick one:
+adr serve-retriever                           # BM25
+adr serve-retriever --searcher dense          # dense (Ollama + FAISS)
+
+# terminal 2:
+adr run --config configs/gpt_researcher_browsecomp_plus.yaml --limit 5
+```
+
+```bash
 adr evaluate runs/<tab-complete> --official browsecomp_plus
 ```
 
 The gpt-researcher fork must write a short `Exact Answer:` (set `GR_ANSWER_FORMAT=browsecomp` in `configs/agents/gpt_researcher_browsecomp_plus.yaml`; needs the `srikar/browsecomp-plus-short-answer` branch or a merge of it). A 2000-word research report is scored wrong even when the fact is in the text.
 
-Inspect BrowseComp-Plus queries
+### Inspect queries
 
 ```bash
 adr queries -d browsecomp_plus --limit 10

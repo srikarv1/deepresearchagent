@@ -112,6 +112,8 @@ def make_handler(
             index = backend._get_index()  # noqa: SLF001 (same package)
             return {
                 "status": "ok",
+                "searcher": backend.searcher,
+                "model": backend.model if backend.searcher == "dense" else None,
                 "index_path": str(backend.index_path),
                 "num_docs": getattr(index, "num_docs", None),
             }
@@ -150,15 +152,27 @@ def serve(
     port: int = DEFAULT_PORT,
     default_k: int = 5,
     max_chars: int = 0,
+    searcher: str = "bm25",
+    model: str = "qwen3-embedding:0.6b",
+    dense_index_path: str | None = None,
+    ollama_url: str = "http://localhost:11434",
 ) -> None:
-    backend = BrowseCompPlusSearch(index_path=index_path)
-    print(f"loading {backend.index_path} ...", file=sys.stderr, flush=True)
+    backend = BrowseCompPlusSearch(
+        index_path=index_path,
+        searcher=searcher,
+        model=model,
+        dense_index_path=dense_index_path,
+        ollama_url=ollama_url,
+    )
+    extra = f" + {model} via {ollama_url}" if searcher == "dense" else ""
+    print(f"loading {backend.index_path}{extra} ...", file=sys.stderr, flush=True)
     backend.warm_up()  # fail fast on a missing index / JDK before binding the port
     server = make_server(
         backend, host=host, port=port, default_k=default_k, max_chars=max_chars
     )
+    label = "BM25" if searcher == "bm25" else f"dense {model}"
     print(
-        f"serving BrowseComp-Plus BM25 on http://{host}:{port}/search (k={default_k})",
+        f"serving BrowseComp-Plus {label} on http://{host}:{port}/search (k={default_k})",
         file=sys.stderr,
         flush=True,
     )

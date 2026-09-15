@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import typer
 from rich.console import Console
@@ -305,6 +305,14 @@ def doctor_cmd() -> None:
         f"java={java or 'missing'}; " + ("" if has_pyserini else r"pip install -e '.\[bcp]'"),
     )
 
+    from adr.eval.repos import find_bcp_dense_index
+
+    dense = find_bcp_dense_index()
+    table.add_row(
+        "BrowseComp-Plus dense index (optional)",
+        "[green]found[/green]" if dense.ok else "[yellow]missing[/yellow]",
+        str(dense.path or dense.reason),
+    )
     for name, used_for in (
         ("OPENAI_API_KEY", "DRB judge (LLM_BACKEND=openai) + all Gym judges"),
         ("OPENROUTER_API_KEY", "DRB judge (LLM_BACKEND=openrouter, default)"),
@@ -331,11 +339,25 @@ def serve_retriever_cmd(
     max_chars: int = typer.Option(
         16000, "--max-chars", help="Truncate raw_content per doc (0 = full document)"
     ),
+    searcher: str = typer.Option("bm25", "--searcher", help="bm25 | dense"),
+    model: str = typer.Option(
+        "qwen3-embedding:0.6b", "--model", help="Ollama model for --searcher dense"
+    ),
+    dense_index: Optional[str] = typer.Option(
+        None, "--dense-index", help="Dense shard dir (default: third_party/bcp_indexes/<model>)"
+    ),
+    ollama_url: str = typer.Option(
+        "http://localhost:11434", "--ollama-url", help="Ollama server URL"
+    ),
 ) -> None:
-    """Serve the BrowseComp-Plus BM25 corpus for gpt-researcher's RETRIEVER=custom."""
+    """Serve the BrowseComp-Plus corpus (BM25 or dense) for gpt-researcher."""
     from adr.tools.bcp_server import serve
 
-    serve(index_path=index, host=host, port=port, default_k=k, max_chars=max_chars)
+    serve(
+        index_path=index, host=host, port=port, default_k=k, max_chars=max_chars,
+        searcher=searcher, model=model, dense_index_path=dense_index,
+        ollama_url=ollama_url,
+    )
 
 
 @app.command("bootstrap")

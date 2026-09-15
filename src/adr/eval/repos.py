@@ -133,3 +133,23 @@ def find_bcp_index(explicit: str | Path | None = None) -> RepoLocation:
     if index_looks_valid(path):
         return RepoLocation(path.resolve())
     return RepoLocation(None, f"no Lucene index at {path} (set {INDEX_ENV} or run {INDEX_HELP})")
+
+
+def find_bcp_dense_index(
+    explicit: str | Path | None = None, model: str = "qwen3-embedding:0.6b"
+) -> RepoLocation:
+    from adr.tools.browsecomp_plus import (
+        DENSE_INDEX_ENV,
+        dense_index_looks_valid,
+        dense_index_subdir,
+        resolve_dense_index_glob,
+    )
+
+    pattern = resolve_dense_index_glob(explicit, model)
+    if dense_index_looks_valid(pattern):
+        return RepoLocation(Path(pattern).parent.resolve())
+    return RepoLocation(
+        None,
+        f"no shards at {pattern} (set {DENSE_INDEX_ENV} or run "
+        f"python scripts/download_bcp_index.py --subdir {dense_index_subdir(model)})",
+    )

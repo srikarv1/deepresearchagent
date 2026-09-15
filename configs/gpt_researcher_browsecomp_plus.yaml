@@ -9,7 +9,7 @@ dataset:
   # BrowseComp ids (1..1266, sparse).
   name: browsecomp_plus
   language: en
-  limit: 10
+  limit: 1
   query_ids: []
 
 agent:

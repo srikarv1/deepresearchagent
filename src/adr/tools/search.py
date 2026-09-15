@@ -311,5 +311,9 @@ def build_search(cfg: dict) -> SearchBackend:
         return BrowseCompPlusSearch(
             index_path=cfg.get("index_path"),
             snippet_chars=int(cfg.get("snippet_chars", 600)),
+            searcher=str(cfg.get("searcher", "bm25")),
+            model=str(cfg.get("model", "qwen3-embedding:0.6b")),
+            dense_index_path=cfg.get("dense_index_path"),
+            ollama_url=str(cfg.get("ollama_url", "http://localhost:11434")),
         )
     raise ValueError(f"Unknown search backend: {backend}")
