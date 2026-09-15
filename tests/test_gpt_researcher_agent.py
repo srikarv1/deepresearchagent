@@ -90,6 +90,8 @@ def _make_traj() -> _Traj:
         "e1": _Ev("page one text", "https://a.example/1", "sq1", 1, 1, True),
         "e2": _Ev("page two text", "https://b.example/2", "sq1", 1, 1, False),
         "e3": _Ev("page three text", "https://c.example/3", "sq2", 2, 2, True),
+        # A corpus hit that reached the embeddings filter (BrowseComp-Plus runs).
+        "e4": _Ev("corpus page", "bcp://2882", "sq2", 2, 2, False),
     }
     t.rounds = [
         _Snap(
@@ -170,6 +172,13 @@ class _FakeGPTResearcher:
         self._traj = _make_traj()
         self.deep_researcher = _Deep(self._traj)
         self.visited_urls = {"https://a.example/1", "https://b.example/2", "https://c.example/3", "https://d.example/4"}
+        # Retriever hits aggregated by deep research; bcp:// ones come from adr serve-retriever.
+        self.research_sources = [
+            {"url": "bcp://74874"},
+            {"url": "bcp://2882"},
+            {"url": "bcp://68543"},
+            {"url": "https://d.example/4"},
+        ]
 
     async def conduct_research(self):
         for snap in self._traj.rounds:
@@ -373,3 +382,31 @@ async def test_agent_inserts_resolved_repo_on_sys_path(
     ctx = AgentContext(llm=None, search=None, extra={})
     await agent.run(ResearchTask(query=gym_query), ctx)
     assert sys.path[0] == str(fork.resolve())
+
+
+@pytest.mark.asyncio
+async def test_adapter_collects_corpus_docids(fake_gpt_researcher: Path, gym_query, tmp_path: Path):
+    """bcp:// URLs from the logger pool and research_sources become retrieved_docids."""
+    from adr.agents.gpt_researcher import GPTResearcherAgent
+
+    agent = GPTResearcherAgent({"trajectory_dir": str(fake_gpt_researcher), "keep_trajectory_files": False})
+    task = ResearchTask(query=gym_query, budget=Budget())
+    ctx = AgentContext(llm=None, search=None, extra={"meter": CostMeter(), "run_dir": str(tmp_path)})
+
+    traj = await agent.run(task, ctx)
+
+    assert traj.final_stats["retrieved_docids"] == ["2882", "68543", "74874"]
+
+
+def test_retrieved_docids_ignores_web_urls():
+    from adr.agents.gpt_researcher import GPTResearcherAgent
+
+    class _R:
+        research_sources = [{"url": "https://x.example"}, "bcp://5", {"url": None}]
+        visited_urls = {"https://y.example", "bcp://5/"}
+
+    class _T:
+        evidence = {"e": types.SimpleNamespace(source_url="bcp://7")}
+
+    assert GPTResearcherAgent._retrieved_docids(_R(), _T()) == ["5", "7"]
+    assert GPTResearcherAgent._retrieved_docids(types.SimpleNamespace(), types.SimpleNamespace()) == []

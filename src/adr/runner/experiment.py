@@ -19,7 +19,12 @@ from adr.core.types import Budget, Query, ResearchTask, Trajectory
 from adr.datasets.loader import load_queries
 from adr.eval.deep_research_bench import run_deep_research_bench
 from adr.eval.deep_research_gym import run_deep_research_gym
-from adr.eval.exporters import export_deep_research_bench, export_deep_research_gym
+from adr.eval.exporters import (
+    export_browsecomp_plus,
+    export_browsecomp_plus_ground_truth,
+    export_deep_research_bench,
+    export_deep_research_gym,
+)
 from adr.eval.local_metrics import compute_local_metrics, write_local_metrics
 from adr.eval.scoring import headline_scores
 from adr.llm.factory import build_llm
@@ -95,6 +100,8 @@ async def run_experiment_async(config: dict[str, Any]) -> RunManifest:
             traj.final_stats["wall_s"] = round(time.perf_counter() - t0, 4)
             traj.final_stats["usage"] = meter.snapshot()
             traj.final_stats["budget_violations"] = list(meter.violations)
+            # Agents that bypass ctx.search (gpt_researcher) report their own.
+            traj.final_stats.setdefault("retrieved_docids", sorted(meter.retrieved_docids))
             _write_query_artifacts(run_dir, traj)
             return traj
 
@@ -108,6 +115,10 @@ async def run_experiment_async(config: dict[str, Any]) -> RunManifest:
     dataset_name = config["dataset"]["name"]
     if dataset_name == "deep_research_bench":
         export_deep_research_bench(trajectories, run_dir / "exports" / "deep_research_bench" / f"{model_name}.jsonl")
+    elif dataset_name == "browsecomp_plus":
+        bcp_dir = run_dir / "exports" / "browsecomp_plus"
+        export_browsecomp_plus(trajectories, bcp_dir / model_name, model_name=model_name)
+        export_browsecomp_plus_ground_truth(trajectories, bcp_dir / "ground_truth.jsonl")
     else:
         export_deep_research_gym(trajectories, run_dir / "exports" / "deep_research_gym" / model_name)
 

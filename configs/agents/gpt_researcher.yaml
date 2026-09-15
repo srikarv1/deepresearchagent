@@ -12,7 +12,7 @@ repo_path: null
 # DeepResearchSkill knobs (become DEEP_RESEARCH_* env vars).
 depth: 2
 breadth: 2
-concurrency: 2
+concurrency: 1
 
 # bs | browser | tavily_extract | firecrawl
 scraper: browser

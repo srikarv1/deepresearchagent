@@ -26,7 +26,7 @@ llm:
   temperature: 0.0
   max_output_tokens: 2048
 
-# backend: mock | gym | tavily
+# backend: mock | gym | tavily | browsecomp_plus (BM25 over the BrowseComp-Plus corpus)
 # corpus selects the Gym route: fineweb -> /fineweb/search, clueweb22 -> /search
 search:
   backend: mock

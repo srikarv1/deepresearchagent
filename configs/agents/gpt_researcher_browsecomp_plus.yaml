@@ -1,0 +1,27 @@
+name: gpt_researcher
+repo_path: null
+depth: 5
+breadth: 2
+concurrency: 1
+# BrowseComp-Plus is defined over the fixed Tevatron/browsecomp-plus-corpus,
+# so retrieval goes through the harness's BM25 server instead of the live web.
+# Start it first (loads the Lucene index once, ~10 s):
+#   adr serve-retriever            # http://127.0.0.1:8321/search
+# gpt-researcher's `custom` retriever calls that endpoint and takes the
+# returned raw_content as-is, so no scraping happens (scraper is inert). Hits
+# are bcp://<docid> URLs; the wrapper collects them into
+# final_stats["retrieved_docids"] so upstream's Recall can be computed.
+retriever: custom
+scraper: bs
+max_search_results_per_query: 5
+max_scraper_workers: 4
+trajectory_dir: runs/_gpt_researcher_raw
+keep_trajectory_files: true
+env:
+  RETRIEVER_ENDPOINT: "http://127.0.0.1:8321/search"
+  RETRIEVER_ARG_K: "5"
+  STRATEGIC_LLM: "openai:gpt-5-mini"
+  SMART_LLM: "openai:gpt-5-mini"
+  FAST_LLM: "openai:gpt-5-mini"
+  EMBEDDING: "openai:text-embedding-3-small"
+  SMART_TOKEN_LIMIT: "8000"

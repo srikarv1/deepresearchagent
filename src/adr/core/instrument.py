@@ -23,6 +23,13 @@ class BudgetExceeded(RuntimeError):
     """Raised when an agent overruns its budget and enforcement is on."""
 
 
+def _corpus_docid(url: str) -> str | None:
+    # Local import: tools.browsecomp_plus imports tools.search, which imports core.state.
+    from adr.tools.browsecomp_plus import docid_from_url
+
+    return docid_from_url(url)
+
+
 @dataclass
 class CostMeter:
     """Running totals for one query."""
@@ -36,6 +43,10 @@ class CostMeter:
     n_fetch_calls: int = 0
     search_latency_s: float = 0.0
     retrieved_chars: int = 0
+    # Corpus docids seen in search hits (bcp:// URLs from the BrowseComp-Plus
+    # backend). Not part of snapshot(); the runner writes it to
+    # final_stats["retrieved_docids"] for upstream's Recall.
+    retrieved_docids: set[str] = field(default_factory=set)
     violations: list[str] = field(default_factory=list)
 
     def add_llm(self, usage: TokenUsage, latency_s: float) -> None:
@@ -152,6 +163,10 @@ class MeteredSearch:
         self._meter.retrieved_chars += sum(
             len(hit.text or hit.snippet or "") for hit in hits
         )
+        for hit in hits:
+            docid = _corpus_docid(hit.url)
+            if docid:
+                self._meter.retrieved_docids.add(docid)
         if self._budget is not None:
             self._budget.charge(searches=1, latency_s=elapsed)
         return hits
