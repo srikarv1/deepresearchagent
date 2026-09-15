@@ -32,6 +32,12 @@ data = [
     "pyarrow>=15",
     "fsspec[http]>=2024.2",
 ]
+# BrowseComp-Plus corpus retriever (adr serve-retriever, search.backend:
+# browsecomp_plus). pyserini needs a Java 21 JDK; on CPU-only machines install
+# torch first from https://download.pytorch.org/whl/cpu to skip CUDA wheels.
+bcp = [
+    "pyserini>=1.2.0",
+]
 
 [project.scripts]
 adr = "adr.cli:app"

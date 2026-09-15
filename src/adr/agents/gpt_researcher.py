@@ -19,7 +19,10 @@ Config keys (configs/agents/gpt_researcher.yaml):
   breadth          DEEP_RESEARCH_BREADTH
   concurrency      DEEP_RESEARCH_CONCURRENCY
   scraper          SCRAPER (bs | browser | tavily_extract | firecrawl)
-  retriever        RETRIEVER (tavily | brave | ...)
+  retriever        RETRIEVER (tavily | brave | custom | ...); ``custom`` +
+                   env RETRIEVER_ENDPOINT targets ``adr serve-retriever`` for
+                   BrowseComp-Plus, whose bcp:// hits are collected into
+                   final_stats["retrieved_docids"]
   max_search_results_per_query
   env              extra env vars to set before import (dict)
   trajectory_dir   where gpt-researcher writes trajectory_*.json / _emb.npz
@@ -50,6 +53,7 @@ from adr.core.types import (
     Trajectory,
 )
 from adr.eval.repos import find_gpt_researcher
+from adr.tools.browsecomp_plus import docids_from_urls
 
 _URL = re.compile(r"https?://[^\s\]\)>]+")
 
@@ -128,6 +132,7 @@ class GPTResearcherAgent:
         state = self._build_state(task, gtraj, report_text)
         traj = state.trajectory()
         traj.final_stats.update(self._extra_stats(gtraj, wall))
+        traj.final_stats["retrieved_docids"] = self._retrieved_docids(researcher, gtraj)
         self._fill_meter(
             ctx,
             TokenTracker,
@@ -264,6 +269,23 @@ class GPTResearcherAgent:
             article=report_text, citations=list(dict.fromkeys(_URL.findall(report_text)))
         )
         return state
+
+    @staticmethod
+    def _retrieved_docids(researcher: Any, gtraj: Any) -> list[str]:
+        """Corpus docids the run retrieved, for BrowseComp-Plus Recall.
+
+        Only ``bcp://<docid>`` URLs count, i.e. hits served by
+        ``adr serve-retriever``; live-web runs yield []. Sources are unioned
+        because each sees a different subset: the trajectory logger records
+        every page that reached the embeddings filter (kept or pruned),
+        ``research_sources`` is every retriever hit the deep-research rounds
+        aggregated, and ``visited_urls`` covers anything scraped.
+        """
+        urls: list[Any] = [e.source_url for e in (getattr(gtraj, "evidence", None) or {}).values()]
+        for src in getattr(researcher, "research_sources", None) or []:
+            urls.append(src.get("url") if isinstance(src, dict) else src)
+        urls.extend(getattr(researcher, "visited_urls", None) or ())
+        return docids_from_urls(urls)
 
     @staticmethod
     def _extra_stats(gtraj: Any, wall: float) -> dict[str, Any]:

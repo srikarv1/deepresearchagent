@@ -304,4 +304,12 @@ def build_search(cfg: dict) -> SearchBackend:
         )
     if backend == "tavily":
         return TavilySearch(api_key=cfg.get("api_key"))
+    if backend in {"browsecomp_plus", "bcp"}:
+        # Imported here so the JVM-backed module is only loaded when asked for.
+        from adr.tools.browsecomp_plus import BrowseCompPlusSearch
+
+        return BrowseCompPlusSearch(
+            index_path=cfg.get("index_path"),
+            snippet_chars=int(cfg.get("snippet_chars", 600)),
+        )
     raise ValueError(f"Unknown search backend: {backend}")

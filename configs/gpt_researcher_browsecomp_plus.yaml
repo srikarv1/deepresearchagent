@@ -20,7 +20,12 @@ llm:
   provider: mock
   model: unused
 search:
-  backend: mock
+  # Harness-native agents search the corpus through this backend directly.
+  # gpt_researcher does not use ctx.search; it reaches the same index through
+  # `adr serve-retriever` (see the agent config). Loading is lazy, so this is
+  # inert unless an agent actually calls search.
+  backend: browsecomp_plus
+  index_path: third_party/bcp_indexes/bm25
   top_k: 5
 
 budget:
@@ -34,8 +39,9 @@ budget:
 
 eval:
   # No harness-side judge for this bench. The run exports the official layout to
-  # <run_dir>/exports/browsecomp_plus/<agent>/ plus ground_truth.jsonl; grade with
-  # the upstream script from a texttron/BrowseComp-Plus checkout:
+  # <run_dir>/exports/browsecomp_plus/<agent>/ plus ground_truth.jsonl (with
+  # retrieved_docids from the bcp:// hits); grade with the upstream script from
+  # a texttron/BrowseComp-Plus checkout:
   #   python scripts_evaluation/evaluate_with_openai.py \
   #     --input_dir <run_dir>/exports/browsecomp_plus/gpt_researcher \
   #     --ground_truth <run_dir>/exports/browsecomp_plus/ground_truth.jsonl \

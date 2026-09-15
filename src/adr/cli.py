@@ -18,6 +18,7 @@ from adr.eval.importers import (
     write_trajectories,
 )
 from adr.eval.repos import (
+    find_bcp_index,
     find_deep_research_bench,
     find_deep_research_gym,
     find_gpt_researcher,
@@ -259,6 +260,27 @@ def doctor_cmd() -> None:
             "" if importable else f"pip install -e {gr.path}",
         )
 
+    bcp = find_bcp_index()
+    table.add_row(
+        "BrowseComp-Plus BM25 index",
+        "[green]found[/green]" if bcp.ok else "[yellow]missing[/yellow]",
+        str(bcp.path or bcp.reason),
+    )
+    try:
+        import importlib.util
+
+        has_pyserini = importlib.util.find_spec("pyserini") is not None
+    except Exception:
+        has_pyserini = False
+    import shutil
+
+    java = shutil.which("java")
+    table.add_row(
+        "pyserini + java (BrowseComp-Plus retriever)",
+        "[green]yes[/green]" if (has_pyserini and java) else "[yellow]no[/yellow]",
+        f"java={java or 'missing'}; " + ("" if has_pyserini else r"pip install -e '.\[bcp]'"),
+    )
+
     for name, used_for in (
         ("OPENAI_API_KEY", "DRB judge (LLM_BACKEND=openai) + all Gym judges"),
         ("OPENROUTER_API_KEY", "DRB judge (LLM_BACKEND=openrouter, default)"),
@@ -270,6 +292,22 @@ def doctor_cmd() -> None:
         table.add_row(name, "[green]set[/green]" if present else "[yellow]unset[/yellow]", used_for)
 
     console.print(table)
+
+
+@app.command("serve-retriever")
+def serve_retriever_cmd(
+    index: Optional[str] = typer.Option(
+        None, "--index", help="Lucene index dir (default: ADR_BCP_INDEX or third_party/bcp_indexes/bm25)"
+    ),
+    host: str = typer.Option("127.0.0.1", "--host"),
+    port: int = typer.Option(8321, "--port"),
+    k: int = typer.Option(5, "--k", help="Default hits per query when the client sends no k"),
+    max_chars: int = typer.Option(0, "--max-chars", help="Truncate raw_content (0 = full document)"),
+) -> None:
+    """Serve the BrowseComp-Plus BM25 corpus for gpt-researcher's RETRIEVER=custom."""
+    from adr.tools.bcp_server import serve
+
+    serve(index_path=index, host=host, port=port, default_k=k, max_chars=max_chars)
 
 
 @app.command("bootstrap")

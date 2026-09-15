@@ -118,3 +118,18 @@ def find_key_points(gym_root: Path, explicit: str | Path | None = None) -> Path 
         if resolved.is_dir() and any(resolved.glob("*_aggregated.json")):
             return resolved.resolve()
     return None
+
+
+def find_bcp_index(explicit: str | Path | None = None) -> RepoLocation:
+    """Locate the BrowseComp-Plus BM25 Lucene index (not a repo, but the same lookup shape)."""
+    from adr.tools.browsecomp_plus import (
+        INDEX_ENV,
+        INDEX_HELP,
+        index_looks_valid,
+        resolve_index_path,
+    )
+
+    path = resolve_index_path(explicit)
+    if index_looks_valid(path):
+        return RepoLocation(path.resolve())
+    return RepoLocation(None, f"no Lucene index at {path} (set {INDEX_ENV} or run {INDEX_HELP})")
