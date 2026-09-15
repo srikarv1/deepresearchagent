@@ -27,6 +27,11 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
 ]
+# scripts/build_browsecomp_plus_queries.py only; the loader has no extra deps.
+data = [
+    "pyarrow>=15",
+    "fsspec[http]>=2024.2",
+]
 
 [project.scripts]
 adr = "adr.cli:app"

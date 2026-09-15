@@ -1,0 +1,43 @@
+run_name: gpt-researcher-browsecomp-plus
+output_dir: runs
+seed: 17
+concurrency: 1
+
+dataset:
+  # 830 BrowseComp queries with human-labelled evidence docs, decrypted at load
+  # time from data/benchmarks/browsecomp_plus/query.jsonl. Ids are the original
+  # BrowseComp ids (1..1266, sparse).
+  name: browsecomp_plus
+  language: en
+  limit: 10
+  query_ids: []
+
+agent:
+  name: gpt_researcher
+  config: configs/agents/gpt_researcher_browsecomp_plus.yaml
+
+llm:
+  provider: mock
+  model: unused
+search:
+  backend: mock
+  top_k: 5
+
+budget:
+  max_steps: 32
+  max_searches: 64
+  max_reads: 128
+  max_tokens: 400000
+  max_latency_s: 1200.0
+  max_evidence: 512
+  enforce: false
+
+eval:
+  # No harness-side judge for this bench. The run exports the official layout to
+  # <run_dir>/exports/browsecomp_plus/<agent>/ plus ground_truth.jsonl; grade with
+  # the upstream script from a texttron/BrowseComp-Plus checkout:
+  #   python scripts_evaluation/evaluate_with_openai.py \
+  #     --input_dir <run_dir>/exports/browsecomp_plus/gpt_researcher \
+  #     --ground_truth <run_dir>/exports/browsecomp_plus/ground_truth.jsonl \
+  #     --qrel_evidence topics-qrels/qrel_evidence.txt --eval_dir <run_dir>/evals
+  official_benches: []
