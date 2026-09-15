@@ -135,7 +135,10 @@ adr evaluate runs/<tab-complete> --official deep_research_bench
 ```bash
 adr serve-retriever                           # terminal 1, leave running
 adr run --config configs/gpt_researcher_browsecomp_plus.yaml --limit 5   # terminal 2
+adr evaluate runs/<tab-complete> --official browsecomp_plus
 ```
+
+The gpt-researcher fork must write a short `Exact Answer:` (set `GR_ANSWER_FORMAT=browsecomp` in `configs/agents/gpt_researcher_browsecomp_plus.yaml`; needs the `srikar/browsecomp-plus-short-answer` branch or a merge of it). A 2000-word research report is scored wrong even when the fact is in the text.
 
 Inspect BrowseComp-Plus queries
 

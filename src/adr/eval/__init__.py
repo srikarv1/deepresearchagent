@@ -1,4 +1,5 @@
 from adr.eval.compare import compare_summaries
+from adr.eval.browsecomp_plus import run_browsecomp_plus
 from adr.eval.exporters import (
     export_browsecomp_plus,
     export_browsecomp_plus_ground_truth,
@@ -22,6 +23,7 @@ __all__ = [
     "export_deep_research_bench",
     "export_deep_research_gym",
     "headline_scores",
+    "run_browsecomp_plus",
     "trajectories_from_drb_jsonl",
     "trajectories_from_gym_folder",
     "trajectory_from_pair",

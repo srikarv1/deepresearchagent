@@ -67,6 +67,18 @@ _ENV_MAP = {
     "max_scraper_workers": "MAX_SCRAPER_WORKERS",
 }
 
+# Used only if the fork's write_report does not yet accept answer_format.
+_LEGACY_BROWSECOMP_PROMPT = """You have completed research. Using ONLY the context, answer this question:
+
+{question}
+
+Respond with exactly three sections and nothing else:
+Explanation: <brief reasoning; cite bcp:// docids as [docid]>
+Exact Answer: <succinct final answer, not a paragraph>
+Confidence: <0-100>%
+Do not write a report, headings, or a bibliography.
+"""
+
 
 class GPTResearcherAgent:
     name = "gpt_researcher"
@@ -98,6 +110,38 @@ class GPTResearcherAgent:
             os.environ["TRAJECTORY_OUTPUT_DIR"] = str(Path(traj_dir).expanduser().resolve())
         self._imported = True
 
+    def _answer_format(self, task: ResearchTask) -> str:
+        explicit = str(self.config.get("answer_format") or "").strip()
+        if explicit:
+            return explicit
+        cfg_env = str((self.config.get("env") or {}).get("GR_ANSWER_FORMAT") or "").strip()
+        if cfg_env:
+            return cfg_env
+        if task.query.dataset == "browsecomp_plus":
+            return str(os.environ.get("GR_ANSWER_FORMAT") or "browsecomp").strip()
+        return ""
+
+    async def _write_report(self, researcher: Any, task: ResearchTask) -> str:
+        """Prefer the fork's browsecomp answer_format; fall back for older checkouts."""
+        fmt = self._answer_format(task)
+        if fmt:
+            os.environ["GR_ANSWER_FORMAT"] = fmt
+        else:
+            os.environ.pop("GR_ANSWER_FORMAT", None)
+        try:
+            if fmt:
+                return await researcher.write_report(answer_format=fmt)
+            return await researcher.write_report()
+        except TypeError:
+            if fmt:
+                try:
+                    return await researcher.write_report(
+                        custom_prompt=_LEGACY_BROWSECOMP_PROMPT.format(question=task.query.text)
+                    )
+                except TypeError:
+                    pass
+            return await researcher.write_report()
+
     def _modules(self) -> tuple[Any, Any, Any]:
         self._prepare_import()
         gr = importlib.import_module("gpt_researcher")
@@ -117,13 +161,7 @@ class GPTResearcherAgent:
         researcher = GPTResearcher(query=task.query.text, report_type="deep")
         t0 = time.perf_counter()
         await researcher.conduct_research()
-        custom_prompt = ""
-        if task.query.dataset == "browsecomp_plus":
-            custom_prompt = (
-                "Answer the query in one short sentence based on the research context. "
-                "No headers, no citations, just the factual answer."
-            )
-        report_text = await researcher.write_report(custom_prompt=custom_prompt)
+        report_text = await self._write_report(researcher, task)
         wall = time.perf_counter() - t0
 
         deep = getattr(researcher, "deep_researcher", None)

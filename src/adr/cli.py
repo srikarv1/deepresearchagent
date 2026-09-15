@@ -95,7 +95,7 @@ def run_cmd(
     limit: int | None = typer.Option(None, "--limit"),
     run_name: str | None = typer.Option(None, "--run-name"),
     official: str | None = typer.Option(
-        None, "--official", help="Comma-separated: deep_research_bench,deep_research_gym"
+        None, "--official", help="Comma-separated: deep_research_bench,deep_research_gym,browsecomp_plus"
     ),
 ) -> None:
     overrides: dict = {}
@@ -189,7 +189,7 @@ def score_cmd(
 def evaluate_cmd(
     run_dir: Path = typer.Argument(..., exists=True, file_okay=False),
     official: str = typer.Option(
-        "", "--official", help="Comma-separated benches, or empty for local metrics only"
+        "", "--official", help="Comma-separated benches, or empty for local metrics only (deep_research_bench,deep_research_gym,browsecomp_plus)"
     ),
     config: Path | None = typer.Option(None, "--config", "-c"),
 ) -> None:

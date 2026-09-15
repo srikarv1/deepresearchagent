@@ -17,6 +17,7 @@ from adr.agents.registry import build_agent
 from adr.core.instrument import CostMeter, MeteredLLM, MeteredSearch
 from adr.core.types import Budget, Query, ResearchTask, Trajectory
 from adr.datasets.loader import load_queries
+from adr.eval.browsecomp_plus import run_browsecomp_plus
 from adr.eval.deep_research_bench import run_deep_research_bench
 from adr.eval.deep_research_gym import run_deep_research_gym
 from adr.eval.exporters import (
@@ -199,6 +200,15 @@ def _run_official(
             run_quality=bool(eval_cfg.get("run_quality", True)),
             run_kpr=bool(eval_cfg.get("run_kpr", True)),
             run_citation=bool(eval_cfg.get("run_citation", False)),
+            timeout_s=eval_cfg.get("timeout_s"),
+        )
+    if bench in {"browsecomp_plus", "bcp"}:
+        eval_cfg = _eval_file(config, "browsecomp_plus")
+        return run_browsecomp_plus(
+            trajectories,
+            run_dir=run_dir,
+            model_name=model_name,
+            judge_cfg=eval_cfg.get("judge") or {},
             timeout_s=eval_cfg.get("timeout_s"),
         )
     raise ValueError(f"Unknown bench {bench!r}")

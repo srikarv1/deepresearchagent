@@ -15,6 +15,8 @@ The script symlinks a checkout you already have rather than cloning a second cop
 | quality / KPR / citation + key points | `deepresearchgym`, `deepresearch_benchmarking` | `eval_quality_async.py`                     |
 | `gpt_researcher` agent (not a judge)  | `gpt-researcher`, `gpt_researcher`             | `gpt_researcher/utils/trajectory_logger.py` |
 
+BrowseComp-Plus judging is **in-harness** (`adr evaluate <run> --official browsecomp_plus`): accuracy uses the official grader prompt, recall uses `evidence_docs` already on each query. The upstream `texttron/BrowseComp-Plus` checkout is optional.
+
 Two directory names are accepted for the Gym judges because forks rename the repo; the marker file is what actually decides whether a candidate is valid.
 
 Upstreams: [Ayanami0730/deep_research_bench](https://github.com/Ayanami0730/deep_research_bench) and [cxcscmu/deepresearch_benchmarking](https://github.com/cxcscmu/deepresearch_benchmarking). The `gpt_researcher` row is the agent under test, not a judge: [WilliamOdinson/gpt-researcher](https://github.com/WilliamOdinson/gpt-researcher). Override with `GR_REPO_URL` or `ADR_GR_DIR`.
