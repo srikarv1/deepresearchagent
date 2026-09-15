@@ -438,3 +438,11 @@ async def test_adapter_requests_browsecomp_answer_format(
     gym = Query(id="chip", text="why chip", dataset="deep_research_gym", language="en")
     await agent.run(ResearchTask(query=gym, budget=Budget()), ctx)
     assert "answer_format" not in _FakeGPTResearcher.last_write_kwargs
+
+
+def test_legacy_fallback_prompt_is_official_query_template():
+    from adr.agents.gpt_researcher import _LEGACY_BROWSECOMP_PROMPT
+    from adr.eval.browsecomp_plus_prompts import QUERY_TEMPLATE_NO_GET_DOCUMENT
+
+    assert _LEGACY_BROWSECOMP_PROMPT == QUERY_TEMPLATE_NO_GET_DOCUMENT
+    assert "You have completed research" not in _LEGACY_BROWSECOMP_PROMPT

@@ -11,9 +11,14 @@ from adr.core.types import Query, Report, Trajectory
 from adr.eval.browsecomp_plus import (
     aggregate,
     evidence_docids,
+    format_query,
     parse_grade,
     recall_for,
     run_browsecomp_plus,
+)
+from adr.eval.browsecomp_plus_prompts import (
+    GRADER_TEMPLATE,
+    QUERY_TEMPLATE_NO_GET_DOCUMENT,
 )
 from adr.eval.scoring import headline_scores
 from adr.llm.mock import MockLLM
@@ -130,3 +135,20 @@ def test_run_browsecomp_plus_missing_answers(tmp_path: Path):
     out = run_browsecomp_plus([t], run_dir=tmp_path, model_name="m", llm=MockLLM())
     assert out["official"] is False
     assert "gold answer" in out["reason"]
+
+
+def test_official_query_template_wraps_raw_question():
+    raw = "Which river runs through Munich?"
+    wrapped = format_query(raw, "QUERY_TEMPLATE_NO_GET_DOCUMENT")
+    assert wrapped == QUERY_TEMPLATE_NO_GET_DOCUMENT.format(Question=raw)
+    assert "You are a deep research agent" in wrapped
+    assert "using the search tool provided" in wrapped
+    assert "get_document" not in wrapped
+    assert format_query(raw) == raw
+    with pytest.raises(ValueError, match="Unknown query template"):
+        format_query(raw, "NOPE")
+
+
+def test_grader_sees_raw_question_not_the_query_template():
+    assert "[question]: {question}" in GRADER_TEMPLATE
+    assert "You are a deep research agent" not in GRADER_TEMPLATE

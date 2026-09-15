@@ -33,6 +33,9 @@ def test_load_browsecomp_plus_decryption():
     assert "African author" in row.text
     assert row.metadata["answer"] == "1988-96"
     assert row.metadata["raw"]["query"] != row.text
+    # Official agents wrap QUERY_TEMPLATE at the client, not in the dataset row.
+    # Judge [question] and ground_truth.jsonl stay the raw decrypted question.
+    assert "You are a deep research agent" not in row.text
 
     evidence = row.metadata["evidence_docs"]
     gold = row.metadata["gold_docs"]
