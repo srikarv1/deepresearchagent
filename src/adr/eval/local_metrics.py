@@ -26,6 +26,16 @@ _MEAN_KEYS = [
     "n_citations",
     "article_chars",
 ]
+# Optional oracle means: only averaged when the value is numeric (BCP runs).
+_ORACLE_MEAN_KEYS = [
+    "rounds_before_answer",
+    "rounds_after_answer",
+    "searches_after_answer",
+    "keep_recall_evidence",
+    "keep_recall_gold",
+    "retrieved_recall_evidence",
+    "retrieved_recall_gold",
+]
 
 
 def compute_local_metrics(trajectories: list[Trajectory]) -> dict[str, Any]:
@@ -33,6 +43,10 @@ def compute_local_metrics(trajectories: list[Trajectory]) -> dict[str, Any]:
     rows = [_one(traj) for traj in trajectories]
     n = len(rows) or 1
     averages = {f"mean_{k}": round(sum(row[k] for row in rows) / n, 4) for k in _MEAN_KEYS}
+    for key in _ORACLE_MEAN_KEYS:
+        vals = [row[key] for row in rows if isinstance(row.get(key), (int, float))]
+        if vals:
+            averages[f"mean_{key}"] = round(sum(vals) / len(vals), 4)
     return {
         "n_queries": len(rows),
         "n_with_report": sum(1 for row in rows if row["has_report"]),
@@ -87,7 +101,22 @@ def _one(traj: Trajectory) -> dict[str, Any]:
         "n_citations": len(list(dict.fromkeys(citations))),
         "article_chars": len(article),
         "budget_violations": stats.get("budget_violations") or [],
+        **_oracle_row(traj),
     }
+
+
+def _oracle_row(traj: Trajectory) -> dict[str, Any]:
+    summary = ((traj.labels or {}).get("summary")) or (traj.final_stats or {}).get("oracle") or {}
+    if not isinstance(summary, dict):
+        return {}
+    out: dict[str, Any] = {}
+    for key in _ORACLE_MEAN_KEYS:
+        if isinstance(summary.get(key), (int, float)):
+            out[key] = float(summary[key])
+    for key in ("answer_path", "discarded_answer", "discarded_gold", "answer_in_report"):
+        if key in summary:
+            out[key] = summary[key]
+    return out
 
 
 def write_local_metrics(path: Path, metrics: dict[str, Any]) -> None:

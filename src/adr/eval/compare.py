@@ -28,6 +28,13 @@ _STRUCTURE_KEYS = {
     "mean_prune_rate",
     "mean_n_citations",
     "mean_article_chars",
+    "mean_rounds_before_answer",
+    "mean_rounds_after_answer",
+    "mean_searches_after_answer",
+    "mean_keep_recall_evidence",
+    "mean_keep_recall_gold",
+    "mean_retrieved_recall_evidence",
+    "mean_retrieved_recall_gold",
 }
 
 

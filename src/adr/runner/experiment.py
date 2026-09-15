@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import time
 import traceback
 from dataclasses import dataclass
@@ -28,6 +29,7 @@ from adr.eval.exporters import (
 )
 from adr.eval.local_metrics import compute_local_metrics, write_local_metrics
 from adr.eval.scoring import headline_scores
+from adr.eval.trajectory_labels import annotate_trajectory, write_labels
 from adr.llm.factory import build_llm
 from adr.tools.search import build_search
 
@@ -59,6 +61,7 @@ async def run_experiment_async(config: dict[str, Any]) -> RunManifest:
         language=config["dataset"].get("language"),
         limit=config["dataset"].get("limit"),
         query_ids=config["dataset"].get("query_ids") or None,
+        split=config["dataset"].get("split"),
     )
     manifest = RunManifest(
         run_id=run_id,
@@ -103,6 +106,20 @@ async def run_experiment_async(config: dict[str, Any]) -> RunManifest:
             traj.final_stats["budget_violations"] = list(meter.violations)
             # Agents that bypass ctx.search (gpt_researcher) report their own.
             traj.final_stats.setdefault("retrieved_docids", sorted(meter.retrieved_docids))
+            items = traj.final_stats.pop("_label_items", None)
+            search_cfg = config.get("search") or {}
+            agent_env = (agent_cfg.get("env") if isinstance(agent_cfg, dict) else None) or {}
+            annotate_trajectory(
+                traj,
+                items=items,
+                run={
+                    "orchestrator": os.environ.get("GR_ORCHESTRATOR") or agent_env.get("GR_ORCHESTRATOR"),
+                    "retriever": search_cfg.get("retriever"),
+                    "embed_model": search_cfg.get("embed_model"),
+                    "split": (query.metadata or {}).get("split"),
+                    "run_id": run_id,
+                },
+            )
             _write_query_artifacts(run_dir, traj)
             return traj
 
@@ -228,7 +245,7 @@ def _eval_file(config: dict[str, Any], name: str) -> dict[str, Any]:
 
 
 def _prepare_run_dir(run_dir: Path, config: dict[str, Any]) -> None:
-    for part in ("queries", "reports", "trajectories", "exports", "metrics"):
+    for part in ("queries", "reports", "trajectories", "exports", "metrics", "labels"):
         (run_dir / part).mkdir(parents=True, exist_ok=True)
     (run_dir / "config.yaml").write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
 
@@ -240,6 +257,7 @@ def _write_query_artifacts(run_dir: Path, traj: Trajectory) -> None:
     (run_dir / "trajectories" / f"{traj.query.id}.json").write_text(
         traj.model_dump_json(indent=2) + "\n", encoding="utf-8"
     )
+    write_labels(run_dir, traj)
     if traj.report:
         (run_dir / "reports" / f"{traj.query.id}.md").write_text(traj.report.article, encoding="utf-8")
 

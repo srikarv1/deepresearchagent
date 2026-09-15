@@ -45,6 +45,7 @@ def load_queries(
     language: str | None = None,
     limit: int | None = None,
     query_ids: list[str] | None = None,
+    split: str | None = None,
 ) -> list[Query]:
     name = DatasetName(dataset)
     source = Path(path) if path else _DEFAULT_SOURCES[name]
@@ -52,6 +53,9 @@ def load_queries(
         raise FileNotFoundError(f"Query file not found: {source}")
 
     wanted = {str(x) for x in query_ids} if query_ids else None
+    from adr.datasets.splits import ids_for_split, split_of
+
+    split_ids = ids_for_split(name.value, split) if split else None
     queries: list[Query] = []
     for line in source.read_text(encoding="utf-8").splitlines():
         if not line.strip():
@@ -60,8 +64,13 @@ def load_queries(
         query = _row_to_query(name, row)
         if language and query.language != language:
             continue
+        if split_ids is not None and query.id not in split_ids:
+            continue
         if wanted is not None and query.id not in wanted:
             continue
+        assigned = split_of(name.value, query.id)
+        if assigned:
+            query.metadata["split"] = assigned
         queries.append(query)
         if limit is not None and len(queries) >= limit:
             break

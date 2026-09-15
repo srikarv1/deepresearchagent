@@ -166,6 +166,8 @@ class Trajectory(BaseModel):
     steps: list[StepRecord] = Field(default_factory=list)
     report: Report | None = None
     final_stats: dict[str, Any] = Field(default_factory=dict)
+    # Privileged labels (qrels, first-seen answer). Never copy into stats_before.
+    labels: dict[str, Any] | None = None
     error: str | None = None
 
     def total_tokens(self) -> int:

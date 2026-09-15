@@ -1,4 +1,10 @@
 from adr.datasets.loader import load_queries
+from adr.datasets.splits import (
+    DEFAULT_SEED,
+    build_bcp_splits,
+    ids_for_split,
+    partition_ids,
+)
 
 
 def test_load_drb_english_slice():
@@ -51,3 +57,28 @@ def test_load_browsecomp_plus_full():
     assert len(rows) == 830
     assert len({r.id for r in rows}) == 830
     assert all(r.metadata["evidence_docs"] for r in rows)
+
+
+def test_bcp_holdout_is_partition_of_all_ids():
+    payload = build_bcp_splits()
+    assert payload["n"] == 830
+    assert payload["seed"] == DEFAULT_SEED
+    assert payload["counts"] == {"train": 581, "val": 83, "test": 166}
+    train, val, test = set(payload["train"]), set(payload["val"]), set(payload["test"])
+    assert not (train & val or train & test or val & test)
+    assert train | val | test == {r.id for r in load_queries("browsecomp_plus")}
+    assert partition_ids(train | val | test) == {
+        "train": payload["train"],
+        "val": payload["val"],
+        "test": payload["test"],
+    }
+
+
+def test_load_queries_split_test_only():
+    rows = load_queries("browsecomp_plus", split="test")
+    assert len(rows) == 166
+    assert {r.metadata["split"] for r in rows} == {"test"}
+    assert {r.id for r in rows} == ids_for_split("browsecomp_plus", "test")
+    smoke = load_queries("browsecomp_plus", split="test", limit=10)
+    assert len(smoke) == 10
+    assert all(r.id in ids_for_split("browsecomp_plus", "test") for r in smoke)

@@ -177,6 +177,17 @@ class GPTResearcherAgent:
         traj = state.trajectory()
         traj.final_stats.update(self._extra_stats(gtraj, wall))
         traj.final_stats["retrieved_docids"] = self._retrieved_docids(researcher, gtraj)
+        traj.final_stats["_label_items"] = [
+            {
+                "id": iid,
+                "url": e.source_url,
+                "text": e.content,
+                "subquery": e.source_subquery,
+                "tree_depth": e.tree_depth,
+                "retrieval_round": e.retrieval_round,
+            }
+            for iid, e in gtraj.evidence.items()
+        ]
         self._fill_meter(
             ctx,
             TokenTracker,
@@ -206,6 +217,9 @@ class GPTResearcherAgent:
             kept = list(snap.decision.kept_item_ids) if snap.decision else []
             pruned = list(snap.decision.pruned_item_ids) if snap.decision else []
             kept_set = set(kept)
+            new_urls = [ev_lookup[i].source_url for i in snap.new_item_ids if i in ev_lookup]
+            kept_urls = [ev_lookup[i].source_url for i in kept if i in ev_lookup]
+            pruned_urls = [ev_lookup[i].source_url for i in pruned if i in ev_lookup]
 
             # Record the step. compact_stats() runs here and captures the
             # evidence pool and frontier as they stood before this round.
@@ -231,6 +245,10 @@ class GPTResearcherAgent:
                     "kept_item_ids": kept,
                     "pruned_item_ids": pruned,
                     "new_item_ids": list(snap.new_item_ids),
+                    "new_docids": docids_from_urls(new_urls),
+                    "kept_docids": docids_from_urls(kept_urls),
+                    "pruned_docids": docids_from_urls(pruned_urls),
+                    "search_queries": [fn.subquery for fn in snap.frontier],
                     "n_retained_after": len(snap.retained_ids),
                     "search_calls": rc.search_calls,
                     "llm_calls": rc.llm_calls,

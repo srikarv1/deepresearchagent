@@ -65,13 +65,18 @@ def queries_cmd(
     language: str | None = typer.Option(None, "--language"),
     limit: int | None = typer.Option(None, "--limit"),
     ids: str | None = typer.Option(None, "--ids", help="Comma-separated query ids"),
+    split: str | None = typer.Option(
+        None, "--split", help="Pinned hold-out: train | val | test (BrowseComp-Plus)"
+    ),
     show_answer: bool = typer.Option(
         False, "--show-answer", help="Show metadata answer (BrowseComp-Plus)"
     ),
 ) -> None:
     """List and inspect benchmark queries."""
     query_ids = [x.strip() for x in ids.split(",") if x.strip()] if ids else None
-    rows = load_queries(dataset, language=language, limit=limit, query_ids=query_ids)
+    rows = load_queries(
+        dataset, language=language, limit=limit, query_ids=query_ids, split=split
+    )
     table = Table(title=f"{dataset} ({len(rows)} queries)", show_lines=True)
     table.add_column("id", no_wrap=True)
     table.add_column("lang", no_wrap=True)
@@ -95,6 +100,9 @@ def run_cmd(
     search_backend: str | None = typer.Option(None, "--search"),
     language: str | None = typer.Option(None, "--language"),
     limit: int | None = typer.Option(None, "--limit"),
+    split: str | None = typer.Option(
+        None, "--split", help="Pinned hold-out: train | val | test (BrowseComp-Plus)"
+    ),
     run_name: str | None = typer.Option(None, "--run-name"),
     official: str | None = typer.Option(
         None, "--official", help="Comma-separated: deep_research_bench,deep_research_gym,browsecomp_plus"
@@ -107,6 +115,8 @@ def run_cmd(
         overrides.setdefault("dataset", {})["language"] = language
     if limit is not None:
         overrides.setdefault("dataset", {})["limit"] = limit
+    if split:
+        overrides.setdefault("dataset", {})["split"] = split
     if agent:
         overrides.setdefault("agent", {})["name"] = agent
     if llm_provider:

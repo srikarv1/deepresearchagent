@@ -1,12 +1,14 @@
-run_name: gpt-researcher-browsecomp-plus-dense
+run_name: gpt-researcher-browsecomp-plus-train
 output_dir: runs
 seed: 17
 concurrency: 1
 
 dataset:
+  # Trajectory generation for PILOT. Same agent + retriever as the table, but
+  # only the train ids (581). Val (83) is for later checkpoint choices.
   name: browsecomp_plus
   language: en
-  split: test
+  split: train
   limit: 10
   query_ids: []
 
@@ -18,15 +20,6 @@ llm:
   provider: mock
   model: unused
 search:
-  # Same HTTP contract as BM25. Ranking is Qwen3-Embedding-0.6B (caption the
-  # table that way). Start the server before adr run:
-  #   ollama pull qwen3-embedding:0.6b
-  #   python scripts/download_bcp_index.py --kind dense
-  #   adr serve-retriever --retriever dense
-  # Orchestration rows (fork srikar/orchestration-policies):
-  #   GR_ORCHESTRATOR=none|topk|extractive|llmlingua|prompted \
-  #     adr run -c configs/gpt_researcher_browsecomp_plus_dense.yaml \
-  #     --run-name bcp-dense-$GR_ORCHESTRATOR
   backend: browsecomp_plus
   retriever: dense
   index_path: third_party/bcp_indexes/bm25
