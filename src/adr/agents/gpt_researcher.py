@@ -39,7 +39,6 @@ from typing import Any
 
 from adr.agents.base import AgentContext, ResearchAgent
 from adr.core.state import ResearchState
-from adr.eval.repos import find_gpt_researcher
 from adr.core.types import (
     ActionType,
     Evidence,
@@ -50,6 +49,7 @@ from adr.core.types import (
     TokenUsage,
     Trajectory,
 )
+from adr.eval.repos import find_gpt_researcher
 
 _URL = re.compile(r"https?://[^\s\]\)>]+")
 
@@ -143,46 +143,23 @@ class GPTResearcherAgent:
     def _build_state(self, task: ResearchTask, gtraj: Any, report_text: str) -> ResearchState:
         state = ResearchState(task.query, task.budget)
 
-        # Subtasks: one per frontier node ever seen. Frontier nodes are the
-        # researchGoal strings of each round's sub-queries.
-        seen_nodes: dict[str, Subtask] = {}
-        for snap in gtraj.rounds:
-            for fn in snap.frontier:
-                if fn.node_id not in seen_nodes:
-                    st = Subtask(id=fn.node_id, goal=fn.subquery, status="open")
-                    seen_nodes[fn.node_id] = st
-                    state.subtasks[st.id] = st
-
-        # Evidence: bypass add_evidence() so max_evidence does not overwrite
-        # gpt-researcher's own retention decisions.
+        # Evidence id -> full EvidenceItem, used to look up content when
+        # injecting items one round at a time.
+        ev_lookup: dict[str, Any] = {}
         for iid, e in gtraj.evidence.items():
-            ev = Evidence(
-                id=iid,
-                url=e.source_url,
-                title="",
-                snippet=e.content[:500],
-                text=e.content,
-                query=e.source_subquery,
-                subtask_id=None,
-                score=0.0,
-                retained=bool(e.was_retained),
-                added_step=int(e.retrieval_round),
-                source_backend="gpt_researcher",
-            )
-            state.evidence[ev.id] = ev
+            ev_lookup[iid] = e
 
-        # One harness step per gpt-researcher round. Rounds are DFS-ordered
-        # recursion levels; each is a PRUNE (the checkpoint's keep/prune) with
-        # the layer's search + read + LLM cost attached.
+        # Each gpt-researcher round becomes one PRUNE step. Evidence and
+        # frontier are injected *after* record_step so that stats_before
+        # reflects the state prior to this round, not the end-of-run state.
         for snap in gtraj.rounds:
             rc = snap.round_cost
             kept = list(snap.decision.kept_item_ids) if snap.decision else []
             pruned = list(snap.decision.pruned_item_ids) if snap.decision else []
-            for fn in snap.frontier:
-                if fn.node_id in state.subtasks:
-                    state.subtasks[fn.node_id].status = (
-                        "done" if fn.status == "completed" else "active"
-                    )
+            kept_set = set(kept)
+
+            # Record the step. compact_stats() runs here and captures the
+            # evidence pool and frontier as they stood before this round.
             state.record_step(
                 OrchestratorAction(
                     type=ActionType.PRUNE,
@@ -213,6 +190,47 @@ class GPTResearcherAgent:
                     ],
                 },
             )
+
+            # Add this round's frontier nodes as subtasks.
+            for fn in snap.frontier:
+                if fn.node_id not in state.subtasks:
+                    state.subtasks[fn.node_id] = Subtask(
+                        id=fn.node_id,
+                        goal=fn.subquery,
+                        status="open",
+                    )
+                state.subtasks[fn.node_id].status = "done" if fn.status == "completed" else "active"
+
+            # Add this round's new evidence. Items from earlier rounds are
+            # already present; first insertion wins (preserves retrieval_round).
+            for iid in snap.new_item_ids:
+                if iid in state.evidence:
+                    continue
+                e = ev_lookup.get(iid)
+                if e is None:
+                    continue
+                state.evidence[iid] = Evidence(
+                    id=iid,
+                    url=e.source_url,
+                    title="",
+                    snippet=e.content[:500],
+                    text=e.content,
+                    query=e.source_subquery,
+                    subtask_id=None,
+                    score=0.0,
+                    retained=iid in kept_set,
+                    added_step=int(e.retrieval_round),
+                    source_backend="gpt_researcher",
+                )
+
+            # Apply this round's keep/prune decisions. A later round may
+            # flip was_retained for an item first seen in an earlier round.
+            for iid in kept:
+                if iid in state.evidence:
+                    state.evidence[iid].retained = True
+            for iid in pruned:
+                if iid in state.evidence:
+                    state.evidence[iid].retained = False
 
         sc = gtraj.synthesis_cost
         state.record_step(
