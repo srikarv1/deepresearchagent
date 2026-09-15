@@ -29,7 +29,12 @@ link_or_clone() {
   fi
 
   if [[ -e "$dest/$marker" ]]; then
-    echo "OK       $dest already usable"
+    if [[ -d "$dest/.git" ]]; then
+      echo "PULLING  $dest"
+      git -C "$dest" pull --ff-only --quiet
+    else
+      echo "OK       $dest (symlink, skipping pull)"
+    fi
     return
   fi
 
