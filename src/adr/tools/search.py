@@ -311,5 +311,10 @@ def build_search(cfg: dict) -> SearchBackend:
         return BrowseCompPlusSearch(
             index_path=cfg.get("index_path"),
             snippet_chars=int(cfg.get("snippet_chars", 600)),
+            retriever=str(cfg.get("retriever") or "bm25"),
+            dense_path=cfg.get("dense_path"),
+            embed_model=cfg.get("embed_model"),
+            embed_base_url=cfg.get("embed_base_url"),
+            query_prefix=cfg.get("query_prefix"),
         )
     raise ValueError(f"Unknown search backend: {backend}")

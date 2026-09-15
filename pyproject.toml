@@ -26,6 +26,7 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
+    "numpy>=1.26",
 ]
 # scripts/build_browsecomp_plus_queries.py only; the loader has no extra deps.
 data = [
@@ -35,8 +36,10 @@ data = [
 # BrowseComp-Plus corpus retriever (adr serve-retriever, search.backend:
 # browsecomp_plus). pyserini needs a Java 21 JDK; on CPU-only machines install
 # torch first from https://download.pytorch.org/whl/cpu to skip CUDA wheels.
+# numpy is the dense (Qwen3-Embedding) ranker; BM25 does not need it.
 bcp = [
     "pyserini>=1.2.0",
+    "numpy>=1.26",
 ]
 
 [project.scripts]

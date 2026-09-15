@@ -23,8 +23,10 @@ search:
   # Harness-native agents search the corpus through this backend directly.
   # gpt_researcher does not use ctx.search; it reaches the same index through
   # `adr serve-retriever` (see the agent config). Loading is lazy, so this is
-  # inert unless an agent actually calls search.
+  # inert unless an agent actually calls search. For the Qwen3-Embedding-0.6B
+  # row use configs/gpt_researcher_browsecomp_plus_dense.yaml instead.
   backend: browsecomp_plus
+  retriever: bm25
   index_path: third_party/bcp_indexes/bm25
   top_k: 5
 

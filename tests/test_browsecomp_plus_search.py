@@ -161,6 +161,7 @@ def test_server_matches_gpt_researcher_custom_retriever_contract(server: str):
     assert body["docid"] == "2882"
     _, body = _get(f"{server}/health")
     assert body["status"] == "ok" and body["num_docs"] == 3
+    assert body["retriever"] == "bm25"
 
 
 def test_server_error_codes(server: str):
