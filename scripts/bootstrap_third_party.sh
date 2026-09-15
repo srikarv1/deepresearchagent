@@ -15,12 +15,18 @@ mkdir -p "$DEST"
 DRB_REPO_URL="${DRB_REPO_URL:-https://github.com/Ayanami0730/deep_research_bench.git}"
 GYM_REPO_URL="${GYM_REPO_URL:-https://github.com/cxcscmu/deepresearch_benchmarking.git}"
 GR_REPO_URL="${GR_REPO_URL:-https://github.com/WilliamOdinson/gpt-researcher.git}"
+GR_BRANCH="${GR_BRANCH:-main}"
 
-# link_or_clone <dest-dir> <marker-file> <repo-url> <candidate-dir>...
+# link_or_clone <dest-dir> <marker-file> <repo-url> [--branch <branch>] <candidate-dir>...
 link_or_clone() {
   local dest="$1"; shift
   local marker="$1"; shift
   local url="$1"; shift
+
+  local branch=""
+  if [[ "${1:-}" == "--branch" ]]; then
+    branch="$2"; shift 2
+  fi
 
   if [[ -e "$dest/$marker" ]]; then
     echo "OK       $dest already usable"
@@ -36,8 +42,12 @@ link_or_clone() {
     fi
   done
 
-  echo "CLONING  $url -> $dest"
-  git clone --depth 1 "$url" "$dest"
+  echo "CLONING  $url -> $dest${branch:+ (branch: $branch)}"
+  if [[ -n "$branch" ]]; then
+    git clone --depth 1 --branch "$branch" "$url" "$dest"
+  else
+    git clone --depth 1 "$url" "$dest"
+  fi
 }
 
 link_or_clone "$DEST/deep_research_bench" "deepresearch_bench_race.py" "$DRB_REPO_URL" \
@@ -49,6 +59,7 @@ link_or_clone "$DEST/deepresearchgym" "eval_quality_async.py" "$GYM_REPO_URL" \
 # Agent under test, not a judge. Marker is the fork's trajectory logger so a
 # plain upstream checkout is not mistaken for the instrumented one.
 link_or_clone "$DEST/gpt-researcher" "gpt_researcher/utils/trajectory_logger.py" "$GR_REPO_URL" \
+  --branch "$GR_BRANCH" \
   "${ADR_GR_DIR:-}" "$PARENT/gpt-researcher" "$PARENT/gpt_researcher"
 
 echo
