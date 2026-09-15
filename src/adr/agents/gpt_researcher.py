@@ -52,6 +52,7 @@ from adr.core.types import (
     TokenUsage,
     Trajectory,
 )
+from adr.eval.browsecomp_plus_prompts import QUERY_TEMPLATE_NO_GET_DOCUMENT
 from adr.eval.repos import find_gpt_researcher
 from adr.tools.browsecomp_plus import docids_from_urls
 
@@ -68,16 +69,9 @@ _ENV_MAP = {
 }
 
 # Used only if the fork's write_report does not yet accept answer_format.
-_LEGACY_BROWSECOMP_PROMPT = """You have completed research. Using ONLY the context, answer this question:
-
-{question}
-
-Respond with exactly three sections and nothing else:
-Explanation: <brief reasoning; cite bcp:// docids as [docid]>
-Exact Answer: <succinct final answer, not a paragraph>
-Confidence: <0-100>%
-Do not write a report, headings, or a bibliography.
-"""
+# Official openai_client.py default template; older generate_report then
+# appends "Context: {context}" after this custom_prompt.
+_LEGACY_BROWSECOMP_PROMPT = QUERY_TEMPLATE_NO_GET_DOCUMENT
 
 
 class GPTResearcherAgent:
@@ -136,7 +130,9 @@ class GPTResearcherAgent:
             if fmt:
                 try:
                     return await researcher.write_report(
-                        custom_prompt=_LEGACY_BROWSECOMP_PROMPT.format(question=task.query.text)
+                        custom_prompt=_LEGACY_BROWSECOMP_PROMPT.format(
+                            Question=task.query.text
+                        )
                     )
                 except TypeError:
                     pass
@@ -158,6 +154,10 @@ class GPTResearcherAgent:
         TokenTracker.reset()
         LatencyTracker.reset()
 
+        # Query.text stays the raw question (judge [question] + ground_truth).
+        # Official openai_client wraps QUERY_TEMPLATE_NO_GET_DOCUMENT as the
+        # user message; wrapping here would poison BM25, so the fork applies
+        # that template only in write_report.
         researcher = GPTResearcher(query=task.query.text, report_type="deep")
         t0 = time.perf_counter()
         await researcher.conduct_research()
