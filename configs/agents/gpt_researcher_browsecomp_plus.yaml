@@ -1,8 +1,8 @@
 name: gpt_researcher
 repo_path: null
-depth: 1
-breadth: 4
-concurrency: 4
+depth: 5
+breadth: 2
+concurrency: 1
 # BrowseComp-Plus is defined over the fixed Tevatron/browsecomp-plus-corpus,
 # so retrieval goes through the harness's BM25 server instead of the live web.
 # Start it first (loads the Lucene index once, ~10 s):
