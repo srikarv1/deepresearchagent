@@ -20,3 +20,6 @@ env:
   SMART_TOKEN_LIMIT: "8000"
   GR_ANSWER_FORMAT: "browsecomp"
   GR_CONTEXT_BUDGET_TOKENS: "50000"
+  # BCP hits already include raw_content (16k–50k chars). The default 8k
+  # EmbeddingsFilter threshold drops them to empty context ("Scraped 0 pages").
+  COMPRESSION_THRESHOLD: "500000"

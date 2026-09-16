@@ -190,6 +190,7 @@ export OPENAI_BASE_URL="${OPENAI_BASE_URL:-https://ssvadlam.openai.azure.com/ope
 export LLM_BACKEND="${LLM_BACKEND:-openai}"
 export GR_ANSWER_FORMAT="${GR_ANSWER_FORMAT:-browsecomp}"
 export GR_CONTEXT_BUDGET_TOKENS="${GR_CONTEXT_BUDGET_TOKENS:-50000}"
+export COMPRESSION_THRESHOLD="${COMPRESSION_THRESHOLD:-500000}"
 # pyserini imports openai; key must be present before serve-retriever.
 if [[ -z "${OPENAI_API_KEY:-}" ]]; then
   log "FATAL: OPENAI_API_KEY empty after wait"
