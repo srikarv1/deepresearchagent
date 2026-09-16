@@ -95,7 +95,12 @@ start_retriever() {
   nohup adr serve-retriever --retriever "$kind" --port "$PORT" \
     >"$RETRIEVER_LOG" 2>&1 &
   local i
-  for i in $(seq 1 90); do
+  # Dense warmup loads Qwen3-8B shards + an Ollama ping before binding :8321.
+  local tries=90
+  if [[ "$kind" == "dense" ]]; then
+    tries=180
+  fi
+  for i in $(seq 1 "$tries"); do
     if curl -sf "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
       log "retriever healthy: $(curl -sf "http://127.0.0.1:${PORT}/health" | head -c 200)"
       return 0
