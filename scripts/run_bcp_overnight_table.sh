@@ -5,20 +5,20 @@
 #   BM25                    × none|topk|extractive|llmlingua|prompted
 #   dense Qwen3-Embedding-8B × none|topk|extractive|llmlingua|prompted
 #
-# Slice: BrowseComp-Plus *test* hold-out, first LIMIT queries (default 12).
+# Slice: BrowseComp-Plus *test* hold-out, first LIMIT queries (default 4).
 # Not the official 830 Acc. Judge is gpt-5-mini (gpt-4.1 unavailable).
 # Trajectories for every row are zipped to runs/overnight-table/bcp-overnight-trajectories.zip.
 #
 # Usage:
 #   set -a; source .env; set +a
 #   bash scripts/run_bcp_overnight_table.sh
-#   # or: BCP_TABLE_LIMIT=8 bash scripts/run_bcp_overnight_table.sh
+#   # or: BCP_TABLE_LIMIT=4 bash scripts/run_bcp_overnight_table.sh
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-LIMIT="${BCP_TABLE_LIMIT:-12}"
+LIMIT="${BCP_TABLE_LIMIT:-4}"
 POLICIES="${BCP_TABLE_POLICIES:-none topk extractive llmlingua prompted}"
 # Both librarians, always. Override with BCP_TABLE_LIBRARIANS="bm25" only for a
 # debug slice — the meeting table needs BM25 and dense-8B.

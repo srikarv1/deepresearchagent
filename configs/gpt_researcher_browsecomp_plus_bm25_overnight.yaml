@@ -7,7 +7,7 @@ dataset:
   name: browsecomp_plus
   language: en
   split: test
-  limit: 12
+  limit: 4
   query_ids: []
 
 agent:

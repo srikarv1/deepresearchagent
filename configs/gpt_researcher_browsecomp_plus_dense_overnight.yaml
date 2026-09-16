@@ -8,7 +8,7 @@ dataset:
   language: en
   split: test
   # Overnight meeting slice, not the 166-query hold-out and not official 830.
-  limit: 12
+  limit: 4
   query_ids: []
 
 agent:
