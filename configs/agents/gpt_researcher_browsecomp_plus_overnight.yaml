@@ -1,8 +1,8 @@
 name: gpt_researcher
 repo_path: null
-# Meeting-scale tree. Paper default remains 5x2 in gpt_researcher_browsecomp_plus.yaml.
-depth: 2
-breadth: 1
+# Meeting-scale tree: depth=3, breadth=2. Paper default remains 5x2.
+depth: 3
+breadth: 2
 concurrency: 1
 retriever: custom
 scraper: bs

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Overnight PILOT table: frozen gpt-researcher (2x1) × librarian × GR_ORCHESTRATOR.
+# Overnight PILOT table: frozen gpt-researcher (depth=3, breadth=2) × librarian × GR_ORCHESTRATOR.
 #
 # Full grid (10 rows):
 #   BM25                    × none|topk|extractive|llmlingua|prompted
@@ -7,6 +7,7 @@
 #
 # Slice: BrowseComp-Plus *test* hold-out, first LIMIT queries (default 12).
 # Not the official 830 Acc. Judge is gpt-5-mini (gpt-4.1 unavailable).
+# Trajectories for every row are zipped to runs/overnight-table/bcp-overnight-trajectories.zip.
 #
 # Usage:
 #   set -a; source .env; set +a
@@ -112,7 +113,7 @@ write_status() {
     echo "# Overnight BCP table"
     echo
     echo "- updated_utc: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    echo "- limit: $LIMIT  split: test  depth x breadth: 2x1"
+    echo "- limit: $LIMIT  split: test  depth=3 breadth=2"
     echo "- librarians: $LIBRARIANS"
     echo "- dense: Qwen3-Embedding-8B   judge: gpt-5-mini (unofficial Acc)"
     echo "- policies: $POLICIES"
@@ -135,7 +136,8 @@ evaluate_run() {
 }
 
 summarize() {
-  python "$ROOT/scripts/summarize_bcp_table.py" --out "$TABLE" || log "summarize failed"
+  python "$ROOT/scripts/summarize_bcp_table.py" --out "$TABLE" --zip "$OUT_DIR/bcp-overnight-trajectories.zip" \
+    || log "summarize failed"
 }
 
 run_done() {
@@ -218,4 +220,5 @@ done
 write_status "all rows finished"
 summarize
 log "done. table -> $TABLE"
+log "trajectories zip -> $OUT_DIR/bcp-overnight-trajectories.zip"
 cat "$TABLE" || true
