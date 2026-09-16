@@ -1,0 +1,45 @@
+run_name: bcp-overnight-bm25
+output_dir: runs
+seed: 17
+concurrency: 1
+
+dataset:
+  name: browsecomp_plus
+  language: en
+  split: test
+  limit: 12
+  query_ids: []
+
+agent:
+  name: gpt_researcher
+  config: configs/agents/gpt_researcher_browsecomp_plus_overnight.yaml
+
+llm:
+  provider: mock
+  model: unused
+search:
+  backend: browsecomp_plus
+  retriever: bm25
+  index_path: third_party/bcp_indexes/bm25
+  top_k: 5
+
+budget:
+  max_steps: 32
+  max_searches: 64
+  max_reads: 128
+  max_tokens: 400000
+  max_latency_s: 1800.0
+  max_evidence: 512
+  enforce: false
+
+eval:
+  official_benches: []
+  browsecomp_plus:
+    judge:
+      provider: openai
+      model: gpt-5-mini
+      api_key_env: OPENAI_API_KEY
+      base_url: null
+      temperature: 0.0
+      max_output_tokens: 800
+      concurrency: 4
