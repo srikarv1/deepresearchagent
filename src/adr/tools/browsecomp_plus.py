@@ -17,7 +17,7 @@ Prerequisites::
 
     pip install -e '.[bcp]'          # pyserini + numpy; needs a Java 21 JDK on PATH
     python scripts/download_bcp_index.py              # 2.1 GB Lucene text
-    python scripts/download_bcp_index.py --kind dense # 0.6B shards; ollama pull qwen3-embedding:0.6b
+    python scripts/download_bcp_index.py --kind dense # 8B shards; ollama pull qwen3-embedding:8b
 
 The index is resolved from ``index_path`` (config), then ``ADR_BCP_INDEX``,
 then ``third_party/bcp_indexes/bm25``. Dense ranking (``retriever: dense``)

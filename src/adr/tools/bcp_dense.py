@@ -3,16 +3,17 @@
 The Tevatron ``qwen3-embedding-*`` pickle shards are the document side of the
 BrowseComp-Plus dense rows (same corpus, same encoder family). We do **not**
 re-encode 100K documents. At query time we embed the question with a matching
-Qwen3-Embedding model served by Ollama (CPU is fine for 0.6B) and take the
-top-k by inner product. Document *text* still comes from the BM25 Lucene index
-already on disk, so ``bcp://`` hits keep the same shape gpt-researcher expects.
+Qwen3-Embedding model served by Ollama (8B is the BCP paper headline; CPU
+works, but query encode is slower than 0.6B) and take the top-k by inner
+product. Document *text* still comes from the BM25 Lucene index already on
+disk, so ``bcp://`` hits keep the same shape gpt-researcher expects.
 
 Query encoding must use the same instruction prefix and L2-normalization as
 Tevatron's example (``examples/BrowseComp-Plus``). A different Ollama tag than
 the shard name (e.g. 8B queries against 0.6B shards) will not rank correctly.
 
 This is **not** the BM25 leaderboard row. Caption Accuracy/Recall as
-Qwen3-Embedding-0.6B (or whichever shard you loaded).
+Qwen3-Embedding-8B (or whichever shard you loaded).
 """
 
 from __future__ import annotations
@@ -27,9 +28,10 @@ from urllib.request import Request, urlopen
 from adr.tools.browsecomp_plus import ROOT
 
 DENSE_ENV = "ADR_BCP_DENSE"
-DEFAULT_DENSE_PATH = ROOT / "third_party" / "bcp_indexes" / "qwen3-embedding-0.6b"
+DEFAULT_DENSE_PATH = ROOT / "third_party" / "bcp_indexes" / "qwen3-embedding-8b"
 DENSE_HELP = (
     "python scripts/download_bcp_index.py --kind dense "
+    "--dense-model qwen3-embedding-8b "
     "(or set ADR_BCP_DENSE / search.dense_path)"
 )
 
@@ -40,7 +42,7 @@ DEFAULT_QUERY_PREFIX = (
     "answer the query\nQuery: "
 )
 DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
-DEFAULT_EMBED_MODEL = "qwen3-embedding:0.6b"
+DEFAULT_EMBED_MODEL = "qwen3-embedding:8b"
 
 
 class QueryEmbedder(Protocol):

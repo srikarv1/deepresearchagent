@@ -362,12 +362,12 @@ def serve_retriever_cmd(
     dense_index: str | None = typer.Option(
         None,
         "--dense-index",
-        help="Tevatron pickle/npz dir (default: ADR_BCP_DENSE or third_party/bcp_indexes/qwen3-embedding-0.6b)",
+        help="Tevatron pickle/npz dir (default: ADR_BCP_DENSE or third_party/bcp_indexes/qwen3-embedding-8b)",
     ),
     embed_model: str | None = typer.Option(
         None,
         "--embed-model",
-        help="Ollama embedding tag (default: ADR_BCP_EMBED_MODEL or qwen3-embedding:0.6b)",
+        help="Ollama embedding tag (default: ADR_BCP_EMBED_MODEL or qwen3-embedding:8b)",
     ),
     embed_base_url: str | None = typer.Option(
         None,

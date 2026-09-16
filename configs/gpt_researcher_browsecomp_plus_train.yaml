@@ -23,8 +23,8 @@ search:
   backend: browsecomp_plus
   retriever: dense
   index_path: third_party/bcp_indexes/bm25
-  dense_path: third_party/bcp_indexes/qwen3-embedding-0.6b
-  embed_model: qwen3-embedding:0.6b
+  dense_path: third_party/bcp_indexes/qwen3-embedding-8b
+  embed_model: qwen3-embedding:8b
   top_k: 5
 
 budget:

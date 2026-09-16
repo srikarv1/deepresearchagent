@@ -46,13 +46,13 @@ The browser scraper requires Google Chrome. If not already installed, download i
 
 ### Step 4: BrowseComp-Plus retriever
 
-Needs pyserini + Java 21. Dense ranking also needs numpy (pulled in by `[bcp]`), the Tevatron 0.6B shards, and Ollama.
+Needs pyserini + Java 21. Dense ranking also needs numpy (pulled in by `[bcp]`), the Tevatron 8B shards, and Ollama. Caption Acc as dense-8B (BCP paper headline). Use `--dense-model qwen3-embedding-0.6b` only for the 0.6B ablation.
 
 ```bash
 pip install -e ".[bcp]"
 python scripts/download_bcp_index.py                 # 2.1 GB Lucene text
-python scripts/download_bcp_index.py --kind dense    # 0.41 GB Qwen3-Embedding-0.6B shards
-ollama pull qwen3-embedding:0.6b                     # CPU query encoder; must match the shard
+python scripts/download_bcp_index.py --kind dense    # 1.64 GB Qwen3-Embedding-8B shards
+ollama pull qwen3-embedding:8b                       # query encoder; must match the shard
 ```
 
 ### Step 4: Verify
@@ -142,7 +142,7 @@ adr run --config configs/gpt_researcher_browsecomp_plus.yaml --limit 5   # termi
 adr evaluate runs/<tab-complete> --official browsecomp_plus
 ```
 
-Dense (official Qwen3-Embedding-0.6B vectors + Ollama query encode). Caption Acc/Recall as dense-0.6B, not the BM25 leaderboard row. Lucene is still required for document text.
+Dense (official Qwen3-Embedding-8B vectors + Ollama query encode). Caption Acc/Recall as dense-8B, not the BM25 leaderboard or 0.6B ablation. Lucene is still required for document text.
 
 ```bash
 adr serve-retriever --retriever dense         # terminal 1
