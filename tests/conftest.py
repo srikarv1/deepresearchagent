@@ -27,11 +27,11 @@ def mock_llm() -> MockLLM:
 
 
 @pytest.fixture
-def gym_query() -> Query:
+def drb_query() -> Query:
     return Query(
         id="chip",
         text="why is there a chip shortage",
-        dataset="deep_research_gym",
+        dataset="deep_research_bench",
         language="en",
     )
 

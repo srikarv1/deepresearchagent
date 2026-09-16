@@ -5,7 +5,6 @@ from adr.eval.exporters import (
     export_browsecomp_plus,
     export_browsecomp_plus_ground_truth,
     export_deep_research_bench,
-    export_deep_research_gym,
 )
 
 
@@ -28,16 +27,6 @@ def test_drb_jsonl_matches_official_schema(tmp_path):
         "prompt": "What are the investment philosophies of Duan Yongping, Warren Buffett, and Charlie Munger? ",
         "article": "article body",
     }
-
-
-def test_gym_qa_pair_files(tmp_path):
-    dest = tmp_path / "gym"
-    export_deep_research_gym(
-        [_traj("923549", "why is there a chip shortage", "long report", "deep_research_gym")],
-        dest,
-    )
-    assert (dest / "923549.q").read_text(encoding="utf-8").strip() == "why is there a chip shortage"
-    assert (dest / "923549.a").read_text(encoding="utf-8").strip() == "long report"
 
 
 def test_browsecomp_plus_run_files_match_official_schema(tmp_path):

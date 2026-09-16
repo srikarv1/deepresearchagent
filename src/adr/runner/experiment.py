@@ -19,12 +19,10 @@ from adr.core.types import Budget, Query, ResearchTask, Trajectory
 from adr.datasets.loader import load_queries
 from adr.eval.browsecomp_plus import run_browsecomp_plus
 from adr.eval.deep_research_bench import run_deep_research_bench
-from adr.eval.deep_research_gym import run_deep_research_gym
 from adr.eval.exporters import (
     export_browsecomp_plus,
     export_browsecomp_plus_ground_truth,
     export_deep_research_bench,
-    export_deep_research_gym,
 )
 from adr.eval.local_metrics import compute_local_metrics, write_local_metrics
 from adr.eval.scoring import headline_scores
@@ -120,8 +118,6 @@ async def run_experiment_async(config: dict[str, Any]) -> RunManifest:
         bcp_dir = run_dir / "exports" / "browsecomp_plus"
         export_browsecomp_plus(trajectories, bcp_dir / model_name, model_name=model_name)
         export_browsecomp_plus_ground_truth(trajectories, bcp_dir / "ground_truth.jsonl")
-    else:
-        export_deep_research_gym(trajectories, run_dir / "exports" / "deep_research_gym" / model_name)
 
     official: dict[str, Any] = {}
     for bench in config.get("eval", {}).get("official_benches") or []:
@@ -186,20 +182,6 @@ def _run_official(
             skip_cleaning=bool(eval_cfg.get("skip_cleaning", False)),
             run_race=bool(eval_cfg.get("run_race", True)),
             run_fact=bool(eval_cfg.get("run_fact", True)),
-            timeout_s=eval_cfg.get("timeout_s"),
-        )
-    if bench in {"deep_research_gym", "gym"}:
-        eval_cfg = _eval_file(config, "deep_research_gym")
-        return run_deep_research_gym(
-            trajectories,
-            run_dir=run_dir,
-            model_name=model_name,
-            third_party_dir=eval_cfg.get("third_party_dir"),
-            key_point_dir=eval_cfg.get("key_point_dir"),
-            judge_model=eval_cfg.get("judge_model", "gpt-4.1-mini"),
-            run_quality=bool(eval_cfg.get("run_quality", True)),
-            run_kpr=bool(eval_cfg.get("run_kpr", True)),
-            run_citation=bool(eval_cfg.get("run_citation", False)),
             timeout_s=eval_cfg.get("timeout_s"),
         )
     if bench in {"browsecomp_plus", "bcp"}:

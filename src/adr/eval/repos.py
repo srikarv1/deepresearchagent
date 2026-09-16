@@ -6,7 +6,7 @@ entirely, or under a different directory name depending on which fork was
 cloned. Resolution order per repo:
 
 1. explicit ``third_party_dir`` from config
-2. the ``ADR_DRB_DIR`` / ``ADR_GYM_DIR`` environment variable
+2. the ``ADR_DRB_DIR`` environment variable
 3. ``third_party/<known name>`` inside this repo
 4. ``<parent of this repo>/<known name>`` -- the common sibling-clone layout
 
@@ -24,10 +24,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 
 DRB_MARKERS = ("deepresearch_bench_race.py",)
-GYM_MARKERS = ("eval_quality_async.py", "eval_kpr_async.py")
 
 DRB_NAMES = ("deep_research_bench",)
-GYM_NAMES = ("deepresearchgym", "deepresearch_benchmarking")
 
 # The agent under test, not a judge. The marker is the instrumented fork's
 # trajectory logger; a plain upstream clone is reported as missing.
@@ -97,27 +95,9 @@ def find_deep_research_bench(explicit: str | Path | None = None) -> RepoLocation
     return _resolve(explicit, "ADR_DRB_DIR", DRB_NAMES, DRB_MARKERS, "DeepResearch Bench")
 
 
-def find_deep_research_gym(explicit: str | Path | None = None) -> RepoLocation:
-    return _resolve(explicit, "ADR_GYM_DIR", GYM_NAMES, GYM_MARKERS, "DeepResearchGym")
-
-
 def find_gpt_researcher(explicit: str | Path | None = None) -> RepoLocation:
     """Locate the instrumented gpt-researcher fork (WilliamOdinson/gpt-researcher)."""
     return _resolve(explicit, "ADR_GR_DIR", GR_NAMES, GR_MARKERS, "gpt-researcher fork")
-
-
-def find_key_points(gym_root: Path, explicit: str | Path | None = None) -> Path | None:
-    """Locate the aggregated key-point directory used for key-point recall."""
-    candidates: list[Path] = []
-    if explicit:
-        candidates.append(Path(explicit).expanduser())
-    candidates.append(gym_root / "key_point")
-    candidates.append(gym_root / "deepresearch_benchmarking" / "key_point")
-    for candidate in candidates:
-        resolved = _absolute(candidate)
-        if resolved.is_dir() and any(resolved.glob("*_aggregated.json")):
-            return resolved.resolve()
-    return None
 
 
 def find_bcp_index(explicit: str | Path | None = None) -> RepoLocation:

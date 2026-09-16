@@ -7,7 +7,7 @@ def _ev(url: str, score: float, title: str = "t") -> Evidence:
 
 
 def test_prune_drops_duplicate_urls_and_low_scores():
-    state = ResearchState(Query(id="1", text="q", dataset="deep_research_gym"))
+    state = ResearchState(Query(id="1", text="q", dataset="deep_research_bench"))
     state.add_evidence(
         [
             _ev("https://example.com/a", 0.9),

@@ -1,6 +1,6 @@
 # deepResearchAgent harness
 
-An evaluation harness for testing deep research agent architectures on **DeepResearch Bench** (RACE + FACT) and **DeepResearchGym** (quality, key-point recall, citation faithfulness).
+An evaluation harness for testing deep research agent architectures on **DeepResearch Bench** (RACE + FACT) and **BrowseComp-Plus** (accuracy + evidence recall).
 
 The harness owns everything except the agent: query loading, budgeted execution, cost measurement, export in each benchmark's official format, invocation of the official judges, and run-to-run comparison. Agent implementations are deliberately left as stubs.
 
@@ -8,7 +8,7 @@ The harness owns everything except the agent: query loading, budgeted execution,
 
 Two things drive most of the structure here:
 
-**Judges are never reimplemented.** The official rubrics carry hard scoring rules, e.g. in DeepResearchGym a report with no source URLs scores zero on Support, and any rubric deficiency caps the score at 8. Paraphrasing those prompts inflates scores and makes results incomparable to published numbers. So the harness writes each benchmark's expected file layout and invokes the upstream judge functions directly, then aggregates raw results into structured scores.
+**Judges are never reimplemented.** The official rubrics carry hard scoring rules, e.g. RACE scores against a reference article matched by exact prompt string, and FACT scrapes every cited page and validates each claim against it. Paraphrasing those prompts inflates scores and makes results incomparable to published numbers. So the harness writes each benchmark's expected file layout and invokes the upstream judge scripts directly, then aggregates raw results into structured scores.
 
 **Cost is measured, not self-reported.** Token and latency numbers would be worthless if they depended on an agent remembering to log them. `MeteredLLM` and `MeteredSearch` wrap the model and search clients before the agent ever sees them, so every call is counted whether or not the agent cooperates. Budgets are charged from the same place.
 
@@ -33,38 +33,35 @@ adr doctor          # shows which repos and keys resolved
 
 | Key | Needed for |
 |---|---|
-| `OPENAI_API_KEY` | DeepResearch Bench RACE + FACT (with `LLM_BACKEND=openai`), and all Gym judges. Honours `OPENAI_BASE_URL` for local vLLM/Ollama. |
+| `OPENAI_API_KEY` | DeepResearch Bench RACE + FACT (with `LLM_BACKEND=openai`). Honours `OPENAI_BASE_URL` for local vLLM/Ollama. |
 | `OPENROUTER_API_KEY` | DeepResearch Bench RACE + FACT (with `LLM_BACKEND=openrouter`, the default). |
 | `JINA_API_KEY` | FACT only; it scrapes every cited page. |
-| `DEEPRESEARCHGYM_API_KEY` | The Gym retrieval sandbox. |
 | `TAVILY_API_KEY` | Live web search, typical for DeepResearch Bench runs. |
 
 ## Score a question and report pair
 
-The quickest way to exercise the whole evaluation path. Matching a benchmark query id matters: RACE pairs your report to its reference article by exact prompt string, and key-point recall needs an id that has key points.
+The quickest way to exercise the whole evaluation path. Matching a benchmark query id matters: RACE pairs your report to its reference article by exact prompt string.
 
 ```bash
-adr score --report myreport.md --query-id 923549
+adr score --report data/fixtures/sample_report_51.md --query-id 51
 ```
 
-The question is filled in from the benchmark. To score an off-benchmark query, pass `--question` instead; you then get Gym quality but not key-point recall.
+The question is filled in from the benchmark. To score an off-benchmark query, pass `--question` instead; RACE cannot pair it to a reference article, so only FACT applies.
 
 ```bash
 adr score --report myreport.md --question "Does creatine help with cognition?"
-adr score --report data/fixtures/sample_report_51.md --query-id 51 --dataset deep_research_bench
-adr score --reports-dir path/to/folder-of-q-and-a-files
 adr score --drb-jsonl path/to/raw.jsonl
-adr score --report myreport.md --query-id 923549 --local-only   # no judge calls
+adr score --report myreport.md --query-id 51 --local-only   # no judge calls
 ```
 
-To check the wiring without a judge key, run `pytest tests/test_official_gym_wiring.py`. It drives the real upstream Gym scripts against a stub judge and asserts an exactly predictable aggregate.
+To check the wiring without a judge key, run `pytest tests/test_official_drb_wiring.py`. It drives the RACE invocation against a stub and asserts on the arguments and the scores read back.
 
 ## Run an agent
 
 ```bash
 adr run --config configs/default.yaml --limit 2          # fixture agent, mock LLM, mock corpus
-adr run --agent pilot --dataset deep_research_gym --limit 20 \
-  --llm openai_compat --search gym --official deep_research_gym
+adr run --agent pilot --dataset deep_research_bench --limit 20 \
+  --llm openai_compat --search tavily --official deep_research_bench
 ```
 
 Then compare a baseline against a candidate. Quality, cost, and structure are reported separately, because "fewer tokens" and "higher score" should never be averaged into one number:
@@ -81,7 +78,7 @@ The instrumented [gpt-researcher fork](https://github.com/WilliamOdinson/gpt-res
 bash scripts/bootstrap_third_party.sh    # also links or clones the fork
 pip install -e third_party/gpt-researcher
 adr doctor
-adr run --config configs/gpt_researcher_gym.yaml --limit 5
+adr run --config configs/gpt_researcher_bench.yaml --limit 5
 ```
 
 It brings its own LLM and retrieval stack, so cost comes from the fork's `TokenTracker` rather than `MeteredLLM`; `final_stats.cost_source` says so. Each deep-research round is one `prune` step and `write_report()` is the `write` step. The fork's raw `trajectory_<id>.json` and `_emb.npz` land in `<run_dir>/gpt_researcher/`. Keep `concurrency: 1`; the fork's trackers are process-global.
@@ -111,14 +108,14 @@ src/adr/
     state.py      evidence pool, frontier, budget, compact_stats()
     instrument.py MeteredLLM / MeteredSearch / CostMeter
   llm/            mock | openai_compat
-  tools/          mock | gym (ClueWeb22 + FineWeb) | tavily
+  tools/          mock | tavily | browsecomp_plus (BM25)
   datasets/       official query loaders
   eval/
     exporters.py  official file formats
     importers.py  arbitrary reports -> Trajectory
     repos.py      locating the judge checkouts
     scoring.py    upstream aggregation formulas + result parsers
-    deep_research_bench.py / deep_research_gym.py
+    deep_research_bench.py / browsecomp_plus.py
     compare.py    quality vs cost vs structure
   runner/         experiment driver
 configs/          default + per-agent + per-bench
@@ -144,9 +141,7 @@ Judge metrics land in `summary.json` under `scores` (flattened, comparable) and 
 |---|---|
 | `race_overall_score` and its four dimensions | `race_result.txt` |
 | `fact_valid_rate`, `fact_total_citations` | `fact_result.txt` |
-| `gym_quality` plus per-criterion ratings | `quality_<judge>.json` |
-| `gym_average_support_rate` / `omitted` / `contradicted` | `relevance_<judge>.json` |
-| `gym_citation_score` | `faithfullness_<judge>.json` |
+| `bcp_accuracy`, `bcp_recall` | in-harness BrowseComp-Plus judge |
 
 ## Report formats the judges expect
 
@@ -156,12 +151,10 @@ Judge metrics land in `summary.json` under `scores` (flattened, comparable) and 
 {"id": 51, "prompt": "...", "article": "...markdown with citations..."}
 ```
 
-**DeepResearchGym** — one folder per system containing `<id>.q` (query) and `<id>.a` (report).
-
 ## Tests
 
 ```bash
 pytest
 ```
 
-The suite runs offline. `tests/test_official_gym_wiring.py` drives the real upstream Gym scripts against the mock judge and asserts an exactly predictable aggregate, so it fails if the invocation contract or the scoring math drifts. `tests/test_official_drb_wiring.py` does the same for RACE with a stub, without touching your checkout. Tests that need a judge repo skip themselves when it is absent.
+The suite runs offline. `tests/test_official_drb_wiring.py` drives the RACE invocation against a stub without touching your checkout, so it fails if the invocation contract or the score parsing drifts. Tests that need a judge repo skip themselves when it is absent.

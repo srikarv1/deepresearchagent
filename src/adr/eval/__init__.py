@@ -4,11 +4,9 @@ from adr.eval.exporters import (
     export_browsecomp_plus,
     export_browsecomp_plus_ground_truth,
     export_deep_research_bench,
-    export_deep_research_gym,
 )
 from adr.eval.importers import (
     trajectories_from_drb_jsonl,
-    trajectories_from_gym_folder,
     trajectory_from_pair,
     write_trajectories,
 )
@@ -21,11 +19,9 @@ __all__ = [
     "export_browsecomp_plus",
     "export_browsecomp_plus_ground_truth",
     "export_deep_research_bench",
-    "export_deep_research_gym",
     "headline_scores",
     "run_browsecomp_plus",
     "trajectories_from_drb_jsonl",
-    "trajectories_from_gym_folder",
     "trajectory_from_pair",
     "write_trajectories",
 ]

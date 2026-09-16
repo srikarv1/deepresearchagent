@@ -14,7 +14,6 @@ from adr.eval.compare import compare_summaries
 from adr.eval.importers import (
     resolve_question,
     trajectories_from_drb_jsonl,
-    trajectories_from_gym_folder,
     trajectory_from_pair,
     write_trajectories,
 )
@@ -22,9 +21,7 @@ from adr.eval.repos import (
     find_bcp_dense_index,
     find_bcp_index,
     find_deep_research_bench,
-    find_deep_research_gym,
     find_gpt_researcher,
-    find_key_points,
 )
 from adr.runner.config import load_config
 from adr.runner.experiment import evaluate_run_dir, run_experiment
@@ -61,7 +58,7 @@ def _print_summary(summary: dict[str, Any]) -> None:
 
 @app.command("queries")
 def queries_cmd(
-    dataset: str = typer.Option("deep_research_gym", "--dataset", "-d"),
+    dataset: str = typer.Option("deep_research_bench", "--dataset", "-d"),
     language: str | None = typer.Option(None, "--language"),
     limit: int | None = typer.Option(None, "--limit"),
     ids: str | None = typer.Option(None, "--ids", help="Comma-separated query ids"),
@@ -97,7 +94,7 @@ def run_cmd(
     limit: int | None = typer.Option(None, "--limit"),
     run_name: str | None = typer.Option(None, "--run-name"),
     official: str | None = typer.Option(
-        None, "--official", help="Comma-separated: deep_research_bench,deep_research_gym,browsecomp_plus"
+        None, "--official", help="Comma-separated: deep_research_bench,browsecomp_plus"
     ),
 ) -> None:
     overrides: dict = {}
@@ -130,28 +127,20 @@ def score_cmd(
     report: Path | None = typer.Option(None, "--report", "-r", help="File containing one report"),
     question: str | None = typer.Option(None, "--question", "-q", help="The query text"),
     query_id: str | None = typer.Option(None, "--query-id", help="Benchmark query id"),
-    reports_dir: Path | None = typer.Option(
-        None, "--reports-dir", help="Folder of <id>.q / <id>.a files"
-    ),
     drb_jsonl: Path | None = typer.Option(
         None, "--drb-jsonl", help="DRB raw file of {id,prompt,article} rows"
     ),
-    dataset: str = typer.Option("deep_research_gym", "--dataset", "-d"),
+    dataset: str = typer.Option("deep_research_bench", "--dataset", "-d"),
     official: str | None = typer.Option(
         None, "--official", help="Benches to judge with; defaults to --dataset"
     ),
-    judge_model: str | None = typer.Option(None, "--judge-model"),
     run_dir: Path | None = typer.Option(None, "--run-dir", help="Where to write artifacts"),
     local_only: bool = typer.Option(
         False, "--local-only", help="Skip the judges, cost metrics only"
     ),
 ) -> None:
     """Score reports the harness did not produce, including a single hand-written one."""
-    if reports_dir:
-        trajectories = trajectories_from_gym_folder(reports_dir)
-        if not trajectories:
-            raise typer.BadParameter(f"No <id>.q / <id>.a pairs found in {reports_dir}")
-    elif drb_jsonl:
+    if drb_jsonl:
         trajectories = trajectories_from_drb_jsonl(drb_jsonl)
         dataset = "deep_research_bench"
     elif report:
@@ -172,7 +161,7 @@ def score_cmd(
             f"[dim]query id[/dim] {resolved_id}  [dim]question[/dim] {resolved_question[:90]}"
         )
     else:
-        raise typer.BadParameter("Pass one of --report, --reports-dir, or --drb-jsonl")
+        raise typer.BadParameter("Pass one of --report or --drb-jsonl")
 
     target = run_dir or Path("runs") / f"score-{dataset}-{len(trajectories)}q"
     write_trajectories(target, trajectories)
@@ -180,8 +169,6 @@ def score_cmd(
 
     benches = [] if local_only else (_benches(official) or [dataset])
     overrides: dict = {"agent": {"name": "imported"}}
-    if judge_model:
-        overrides["eval"] = {"deep_research_gym": {"judge_model": judge_model}}
 
     summary = evaluate_run_dir(target, official_benches=benches, config=overrides)
     _print_summary(summary)
@@ -191,7 +178,7 @@ def score_cmd(
 def evaluate_cmd(
     run_dir: Path = typer.Argument(..., exists=True, file_okay=False),
     official: str = typer.Option(
-        "", "--official", help="Comma-separated benches, or empty for local metrics only (deep_research_bench,deep_research_gym,browsecomp_plus)"
+        "", "--official", help="Comma-separated benches, or empty for local metrics only (deep_research_bench,browsecomp_plus)"
     ),
     config: Path | None = typer.Option(None, "--config", "-c"),
 ) -> None:
@@ -250,19 +237,6 @@ def doctor_cmd() -> None:
         "[green]found[/green]" if drb.ok else "[red]missing[/red]",
         str(drb.path or drb.reason),
     )
-    gym = find_deep_research_gym()
-    table.add_row(
-        "DeepResearchGym repo",
-        "[green]found[/green]" if gym.ok else "[red]missing[/red]",
-        str(gym.path or gym.reason),
-    )
-    if gym.ok:
-        key_points = find_key_points(gym.path)
-        table.add_row(
-            "Gym key points",
-            "[green]found[/green]" if key_points else "[yellow]missing[/yellow]",
-            str(key_points or "needed for key-point recall only"),
-        )
 
     gr = find_gpt_researcher()
     table.add_row(
@@ -325,10 +299,9 @@ def doctor_cmd() -> None:
     )
 
     for name, used_for in (
-        ("OPENAI_API_KEY", "DRB judge (LLM_BACKEND=openai) + all Gym judges"),
+        ("OPENAI_API_KEY", "DRB judge (LLM_BACKEND=openai)"),
         ("OPENROUTER_API_KEY", "DRB judge (LLM_BACKEND=openrouter, default)"),
         ("JINA_API_KEY", "DRB FACT scraping"),
-        ("DEEPRESEARCHGYM_API_KEY", "Gym search backend"),
         ("TAVILY_API_KEY", "live web search"),
     ):
         present = bool(os.environ.get(name))

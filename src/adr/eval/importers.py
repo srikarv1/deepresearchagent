@@ -25,7 +25,7 @@ def trajectory_from_pair(
     question: str,
     report: str,
     query_id: str,
-    dataset: str = "deep_research_gym",
+    dataset: str = "deep_research_bench",
     language: str = "en",
 ) -> Trajectory:
     """Wrap one (question, report) pair so the eval stack can score it.
@@ -49,9 +49,8 @@ def resolve_question(
     """Return ``(query_id, question)``, filling in whichever side is missing.
 
     Matching a benchmark query matters: DeepResearch Bench pairs a report to its
-    reference article by exact prompt string, and key-point recall needs an id
-    that has key points. Supplying a bare question is allowed but then only
-    id-independent metrics (Gym quality) will work.
+    reference article by exact prompt string. Supplying a bare question is
+    allowed but then only id-independent metrics will work.
     """
     if query_id is None and question is None:
         raise ValueError("Provide at least one of query_id or question")
@@ -72,25 +71,6 @@ def resolve_question(
             return row.id, row.text
     slug = re.sub(r"[^a-z0-9]+", "-", (question or "").lower()).strip("-")[:48]
     return slug or "custom", question or ""
-
-
-def trajectories_from_gym_folder(folder: str | Path) -> list[Trajectory]:
-    """Read an official Gym report folder of ``<id>.q`` / ``<id>.a`` files."""
-    folder = Path(folder)
-    out: list[Trajectory] = []
-    for q_path in sorted(folder.glob("*.q")):
-        a_path = q_path.with_suffix(".a")
-        if not a_path.exists():
-            continue
-        out.append(
-            trajectory_from_pair(
-                question=q_path.read_text(encoding="utf-8").strip(),
-                report=a_path.read_text(encoding="utf-8"),
-                query_id=q_path.stem,
-                dataset="deep_research_gym",
-            )
-        )
-    return out
 
 
 def trajectories_from_drb_jsonl(path: str | Path) -> list[Trajectory]:

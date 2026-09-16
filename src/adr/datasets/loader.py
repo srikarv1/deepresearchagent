@@ -10,9 +10,6 @@ from adr.core.types import Query
 
 ROOT = Path(__file__).resolve().parents[3]
 DRB_QUERIES = ROOT / "data" / "benchmarks" / "deep_research_bench" / "query.jsonl"
-GYM_QUERIES = (
-    ROOT / "data" / "benchmarks" / "deep_research_gym" / "researchy_queries_sample_doc_click.jsonl"
-)
 BROWSECOMP_PLUS_QUERIES = ROOT / "data" / "benchmarks" / "browsecomp_plus" / "query.jsonl"
 
 # Tevatron/browsecomp-plus obfuscates every field except query_id with the XOR
@@ -27,13 +24,11 @@ BROWSECOMP_PLUS_CANARY = (
 
 class DatasetName(str, Enum):
     DEEP_RESEARCH_BENCH = "deep_research_bench"
-    DEEP_RESEARCH_GYM = "deep_research_gym"
     BROWSECOMP_PLUS = "browsecomp_plus"
 
 
 _DEFAULT_SOURCES = {
     DatasetName.DEEP_RESEARCH_BENCH: DRB_QUERIES,
-    DatasetName.DEEP_RESEARCH_GYM: GYM_QUERIES,
     DatasetName.BROWSECOMP_PLUS: BROWSECOMP_PLUS_QUERIES,
 }
 
@@ -80,13 +75,7 @@ def _row_to_query(dataset: DatasetName, row: dict) -> Query:
         )
     if dataset is DatasetName.BROWSECOMP_PLUS:
         return _browsecomp_plus_query(row)
-    return Query(
-        id=str(row["id"]),
-        text=row["query"],
-        dataset=dataset.value,
-        language="en",
-        metadata={"raw": row},
-    )
+    raise ValueError(f"No row parser for dataset {dataset.value!r}")
 
 
 # ---------------------------------------------------------------------------

@@ -3,8 +3,7 @@
 #
 # Existing clones elsewhere on disk are symlinked rather than re-cloned, so a
 # checkout you already have (including a fork) is used as-is. Override the
-# lookup with ADR_DRB_DIR / ADR_GYM_DIR, or set DRB_REPO_URL / GYM_REPO_URL to
-# clone from a different remote.
+# lookup with ADR_DRB_DIR, or set DRB_REPO_URL to clone from a different remote.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -13,7 +12,6 @@ PARENT="$(dirname "$ROOT")"
 mkdir -p "$DEST"
 
 DRB_REPO_URL="${DRB_REPO_URL:-https://github.com/Ayanami0730/deep_research_bench.git}"
-GYM_REPO_URL="${GYM_REPO_URL:-https://github.com/cxcscmu/deepresearch_benchmarking.git}"
 GR_REPO_URL="${GR_REPO_URL:-https://github.com/WilliamOdinson/gpt-researcher.git}"
 GR_BRANCH="${GR_BRANCH:-main}"
 
@@ -58,8 +56,6 @@ link_or_clone() {
 link_or_clone "$DEST/deep_research_bench" "deepresearch_bench_race.py" "$DRB_REPO_URL" \
   "${ADR_DRB_DIR:-}" "$PARENT/deep_research_bench"
 
-link_or_clone "$DEST/deepresearchgym" "eval_quality_async.py" "$GYM_REPO_URL" \
-  "${ADR_GYM_DIR:-}" "$PARENT/deepresearchgym" "$PARENT/deepresearch_benchmarking"
 
 # Agent under test, not a judge. Marker is the fork's trajectory logger so a
 # plain upstream checkout is not mistaken for the instrumented one.
@@ -70,7 +66,6 @@ link_or_clone "$DEST/gpt-researcher" "gpt_researcher/utils/trajectory_logger.py"
 echo
 echo "Judge dependencies (install into the same env that runs adr):"
 echo "  pip install -r $DEST/deep_research_bench/requirements.txt   # google-genai for RACE/FACT"
-echo "  pip install openai crawl4ai                                 # Gym judges (+ citation)"
 echo "  pip install -e $DEST/gpt-researcher                          # gpt_researcher agent"
 echo
 echo "BrowseComp-Plus corpus retriever (optional, 2.1 GB index + pyserini/Java 21):"

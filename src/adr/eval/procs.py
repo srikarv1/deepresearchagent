@@ -41,21 +41,3 @@ def run_script(
         "stdout_tail": completed.stdout[-TAIL:],
         "stderr_tail": completed.stderr[-TAIL:],
     }
-
-
-def stage_relative_dir(staging_root: Path, relative: str, target: Path) -> Path:
-    """Expose ``target`` at ``staging_root/relative`` via a symlink.
-
-    ``eval_kpr_async.py`` reads key points from a path relative to its working
-    directory, so we build a working directory that satisfies it instead of
-    editing the upstream checkout.
-    """
-    link = staging_root / relative
-    link.parent.mkdir(parents=True, exist_ok=True)
-    if link.is_symlink() or link.exists():
-        if link.is_symlink():
-            link.unlink()
-        else:
-            return link
-    link.symlink_to(target, target_is_directory=True)
-    return link

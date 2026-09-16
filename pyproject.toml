@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "adr"
 version = "0.1.0"
-description = "End-to-end harness for testing deep research agent architectures on DeepResearch Bench and DeepResearchGym."
+description = "End-to-end harness for testing deep research agent architectures on DeepResearch Bench and BrowseComp-Plus."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }

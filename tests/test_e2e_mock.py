@@ -11,7 +11,7 @@ from adr.runner.config import load_config
 from adr.runner.experiment import run_experiment
 
 
-def test_smoke_run_writes_gym_exports_and_metrics(tmp_path: Path):
+def test_smoke_run_writes_drb_exports_and_metrics(tmp_path: Path):
     cfg = load_config(
         "configs/default.yaml",
         {
@@ -19,8 +19,8 @@ def test_smoke_run_writes_gym_exports_and_metrics(tmp_path: Path):
             "run_name": "e2e",
             "concurrency": 1,
             "dataset": {
-                "name": "deep_research_gym",
-                "query_ids": ["923549", "879779"],
+                "name": "deep_research_bench",
+                "query_ids": ["51", "52"],
                 "limit": 2,
             },
             "agent": {"name": "fixture"},
@@ -30,9 +30,10 @@ def test_smoke_run_writes_gym_exports_and_metrics(tmp_path: Path):
     )
     manifest = run_experiment(cfg)
     run_dir = manifest.run_dir
-    assert (run_dir / "exports" / "deep_research_gym" / "fixture" / "923549.a").exists()
-    assert (run_dir / "exports" / "deep_research_gym" / "fixture" / "923549.q").exists()
-    assert (run_dir / "reports" / "923549.md").read_text(encoding="utf-8")
+    export = run_dir / "exports" / "deep_research_bench" / "fixture.jsonl"
+    assert export.exists()
+    assert len(export.read_text(encoding="utf-8").splitlines()) == 2
+    assert (run_dir / "reports" / "51.md").read_text(encoding="utf-8")
     summary = json.loads((run_dir / "metrics" / "summary.json").read_text(encoding="utf-8"))
     assert summary["n_queries"] == 2
     assert summary["n_with_report"] == 2

@@ -4,7 +4,7 @@ seed: 17
 concurrency: 4
 
 dataset:
-  name: deep_research_gym
+  name: deep_research_bench
   language: en
   limit: 2
   query_ids: []
@@ -26,12 +26,10 @@ llm:
   temperature: 0.0
   max_output_tokens: 2048
 
-# backend: mock | gym | tavily | browsecomp_plus (BM25 over the BrowseComp-Plus corpus)
-# corpus selects the Gym route: fineweb -> /fineweb/search, clueweb22 -> /search
+# backend: mock | tavily | browsecomp_plus (BM25 over the BrowseComp-Plus corpus)
 search:
   backend: mock
   top_k: 5
-  corpus: fineweb
 
 budget:
   max_steps: 12

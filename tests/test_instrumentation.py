@@ -108,7 +108,7 @@ def test_runner_reports_cost_the_agent_never_logged(tmp_path: Path, monkeypatch)
             "output_dir": str(tmp_path),
             "run_name": "silent",
             "concurrency": 1,
-            "dataset": {"name": "deep_research_gym", "query_ids": ["923549"], "limit": 1},
+            "dataset": {"name": "deep_research_bench", "query_ids": ["51"], "limit": 1},
             "agent": {"name": "silent"},
             "llm": {"provider": "mock"},
             "search": {"backend": "mock"},
@@ -135,7 +135,7 @@ def test_fixture_run_records_model_usage(tmp_path: Path):
             "output_dir": str(tmp_path),
             "run_name": "metered",
             "concurrency": 1,
-            "dataset": {"name": "deep_research_gym", "query_ids": ["923549"], "limit": 1},
+            "dataset": {"name": "deep_research_bench", "query_ids": ["51"], "limit": 1},
             "agent": {"name": "fixture"},
         },
     )

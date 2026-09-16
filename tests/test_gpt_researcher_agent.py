@@ -235,13 +235,13 @@ def fake_gpt_researcher(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
 
 # ── tests ─────────────────────────────────────────────────────────────
 @pytest.mark.asyncio
-async def test_adapter_converts_rounds_to_steps(fake_gpt_researcher: Path, gym_query, tmp_path: Path):
+async def test_adapter_converts_rounds_to_steps(fake_gpt_researcher: Path, drb_query, tmp_path: Path):
     from adr.agents.gpt_researcher import GPTResearcherAgent
 
     run_dir = tmp_path / "run"
     run_dir.mkdir()
     agent = GPTResearcherAgent({"trajectory_dir": str(fake_gpt_researcher)})
-    task = ResearchTask(query=gym_query, budget=Budget(max_evidence=1))  # tiny cap must not clobber retention
+    task = ResearchTask(query=drb_query, budget=Budget(max_evidence=1))  # tiny cap must not clobber retention
     meter = CostMeter()
     ctx = AgentContext(llm=None, search=None, extra={"meter": meter, "run_dir": str(run_dir)})
 
@@ -282,13 +282,13 @@ async def test_adapter_converts_rounds_to_steps(fake_gpt_researcher: Path, gym_q
 
 
 @pytest.mark.asyncio
-async def test_local_metrics_pick_up_adapter_output(fake_gpt_researcher: Path, gym_query, tmp_path: Path):
+async def test_local_metrics_pick_up_adapter_output(fake_gpt_researcher: Path, drb_query, tmp_path: Path):
     from adr.agents.gpt_researcher import GPTResearcherAgent
 
     agent = GPTResearcherAgent({"keep_trajectory_files": False})
     meter = CostMeter()
     ctx = AgentContext(llm=None, search=None, extra={"meter": meter})
-    traj = await agent.run(ResearchTask(query=gym_query), ctx)
+    traj = await agent.run(ResearchTask(query=drb_query), ctx)
     # Mirror what the runner does before local metrics.
     traj.final_stats["usage"] = meter.snapshot()
     traj.final_stats["wall_s"] = 42.0
@@ -314,7 +314,7 @@ def test_registry_exposes_gpt_researcher():
     assert agent.config["depth"] == 3
 
 
-def test_missing_fork_gives_clear_error(monkeypatch: pytest.MonkeyPatch, gym_query):
+def test_missing_fork_gives_clear_error(monkeypatch: pytest.MonkeyPatch, drb_query):
     """If the real package is importable but lacks the fork's logger, say so."""
     import asyncio
 
@@ -348,7 +348,7 @@ def test_missing_fork_gives_clear_error(monkeypatch: pytest.MonkeyPatch, gym_que
     agent = GPTResearcherAgent({"keep_trajectory_files": False})
     ctx = AgentContext(llm=None, search=None, extra={})
     with pytest.raises(RuntimeError, match="trajectory_logger"):
-        asyncio.run(agent.run(ResearchTask(query=gym_query), ctx))
+        asyncio.run(agent.run(ResearchTask(query=drb_query), ctx))
 
 
 # ── repo resolution ───────────────────────────────────────────────────
@@ -371,7 +371,7 @@ def test_find_gpt_researcher_requires_fork_marker(tmp_path: Path, monkeypatch: p
 
 @pytest.mark.asyncio
 async def test_agent_inserts_resolved_repo_on_sys_path(
-    fake_gpt_researcher: Path, gym_query, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    fake_gpt_researcher: Path, drb_query, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     from adr.agents.gpt_researcher import GPTResearcherAgent
 
@@ -383,17 +383,17 @@ async def test_agent_inserts_resolved_repo_on_sys_path(
 
     agent = GPTResearcherAgent({"keep_trajectory_files": False})
     ctx = AgentContext(llm=None, search=None, extra={})
-    await agent.run(ResearchTask(query=gym_query), ctx)
+    await agent.run(ResearchTask(query=drb_query), ctx)
     assert sys.path[0] == str(fork.resolve())
 
 
 @pytest.mark.asyncio
-async def test_adapter_collects_corpus_docids(fake_gpt_researcher: Path, gym_query, tmp_path: Path):
+async def test_adapter_collects_corpus_docids(fake_gpt_researcher: Path, drb_query, tmp_path: Path):
     """bcp:// URLs from the logger pool and research_sources become retrieved_docids."""
     from adr.agents.gpt_researcher import GPTResearcherAgent
 
     agent = GPTResearcherAgent({"trajectory_dir": str(fake_gpt_researcher), "keep_trajectory_files": False})
-    task = ResearchTask(query=gym_query, budget=Budget())
+    task = ResearchTask(query=drb_query, budget=Budget())
     ctx = AgentContext(llm=None, search=None, extra={"meter": CostMeter(), "run_dir": str(tmp_path)})
 
     traj = await agent.run(task, ctx)
@@ -435,8 +435,8 @@ async def test_adapter_requests_browsecomp_answer_format(
     await agent.run(ResearchTask(query=query, budget=Budget()), ctx)
     assert _FakeGPTResearcher.last_write_kwargs.get("answer_format") == "browsecomp"
 
-    gym = Query(id="chip", text="why chip", dataset="deep_research_gym", language="en")
-    await agent.run(ResearchTask(query=gym, budget=Budget()), ctx)
+    query = Query(id="chip", text="why chip", dataset="deep_research_bench", language="en")
+    await agent.run(ResearchTask(query=query, budget=Budget()), ctx)
     assert "answer_format" not in _FakeGPTResearcher.last_write_kwargs
 
 

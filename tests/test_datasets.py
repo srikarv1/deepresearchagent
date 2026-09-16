@@ -9,12 +9,6 @@ def test_load_drb_english_slice():
     assert rows[0].id == "51"
 
 
-def test_load_gym_by_id():
-    rows = load_queries("deep_research_gym", query_ids=["923549"])
-    assert len(rows) == 1
-    assert "chip shortage" in rows[0].text
-
-
 def test_load_browsecomp_plus_slice():
     rows = load_queries("browsecomp_plus", limit=5)
     assert len(rows) == 5
