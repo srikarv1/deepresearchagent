@@ -70,6 +70,38 @@ class GPTResearcherAgent:
     def __init__(self, config: dict | None = None) -> None:
         self.config = config or {}
         self._imported = False
+        self._gate_decisions: list[dict[str, Any]] = []
+
+    # ── search gate ───────────────────────────────────────────────
+    def _build_sub_query_gate(self):
+        """Builds the sub_query_gate callable for GPTResearcher, or None if disabled.
+
+        The gate is consulted once per deep-research round with that round's
+        proposed serp_queries (list of {"query", "researchGoal"} dicts) and
+        must return the subset to actually run. v1 policy: keep a budget of
+        the first N proposed queries per round, skip the rest. Every decision
+        is logged to self._gate_decisions for post-hoc analysis.
+        """
+        gate_cfg = self.config.get("sub_query_gate") or {}
+        if not gate_cfg.get("enabled", False):
+            return None
+        max_per_round = gate_cfg.get("max_queries_per_round")
+
+        async def gate(serp_queries: list[dict]) -> list[dict]:
+            cutoff = len(serp_queries) if max_per_round is None else max_per_round
+            for i, sq in enumerate(serp_queries):
+                action = "run" if i < cutoff else "skip"
+                self._gate_decisions.append(
+                    {
+                        "query": sq.get("query"),
+                        "research_goal": sq.get("researchGoal"),
+                        "action": action,
+                        "reason": "kept" if action == "run" else "budget_exceeded",
+                    }
+                )
+            return serp_queries[:cutoff]
+
+        return gate
 
     # ── import / env ──────────────────────────────────────────────
     def _prepare_import(self) -> None:
@@ -109,8 +141,13 @@ class GPTResearcherAgent:
         # under a semaphore, so reset here and read back before returning.
         TokenTracker.reset()
         LatencyTracker.reset()
+        self._gate_decisions = []
 
-        researcher = GPTResearcher(query=task.query.text, report_type="deep")
+        researcher = GPTResearcher(
+            query=task.query.text,
+            report_type="deep",
+            sub_query_gate=self._build_sub_query_gate(),
+        )
         t0 = time.perf_counter()
         await researcher.conduct_research()
         report_text = await researcher.write_report()
@@ -128,6 +165,7 @@ class GPTResearcherAgent:
         state = self._build_state(task, gtraj, report_text)
         traj = state.trajectory()
         traj.final_stats.update(self._extra_stats(gtraj, wall))
+        traj.final_stats["sub_query_gate_decisions"] = list(self._gate_decisions)
         self._fill_meter(
             ctx,
             TokenTracker,

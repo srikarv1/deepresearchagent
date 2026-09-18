@@ -27,8 +27,26 @@ trajectory_dir: runs/_gpt_researcher_raw
 keep_trajectory_files: true
 
 # Extra env vars applied before import, e.g. model overrides.
+# NOTE: using provider "openai" (not "azure_openai") pointed at the Azure
+# Foundry v1 endpoint via OPENAI_BASE_URL. LangChain's AzureChatOpenAI builds
+# a broken URL against this resource's newer /openai/v1-style endpoint (it
+# appends its own "/openai/" path, doubling it); the plain OpenAI client
+# works fine against the same endpoint with standard Bearer auth, and the
+# fork's "openai" provider already honors OPENAI_BASE_URL for exactly this
+# kind of OpenAI-compatible endpoint. OPENAI_API_KEY is read from the
+# top-level .env (already the Azure key).
 env:
-  STRATEGIC_LLM: "openai:gpt-5-mini"
-  SMART_LLM: "openai:gpt-5-mini"
-  FAST_LLM: "openai:gpt-5-mini"
+  OPENAI_BASE_URL: "https://adityago.openai.azure.com/openai/v1"
+  STRATEGIC_LLM: "openai:gpt-5"
+  SMART_LLM: "openai:gpt-5"
+  FAST_LLM: "openai:gpt-5"
   EMBEDDING: "openai:text-embedding-3-small"
+
+# Search gate: intercepts each round's proposed sub-queries before they run.
+# Requires the feature/search-gate branch of the fork (sub_query_gate hook in
+# deep_research.py). enabled: false is a strict no-op passthrough.
+sub_query_gate:
+  enabled: false
+  # Keep at most this many of the proposed queries per round (in the order
+  # the planner returned them); the rest are skipped, not deferred.
+  max_queries_per_round: null
