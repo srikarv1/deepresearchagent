@@ -104,6 +104,11 @@ def run_cmd(
         None, "--split", help="Pinned hold-out: train | val | test (BrowseComp-Plus)"
     ),
     run_name: str | None = typer.Option(None, "--run-name"),
+    run_id: str | None = typer.Option(
+        None, "--run-id", help="Exact run directory name (default: <timestamp>-<run_name>)"
+    ),
+    output_dir: Path | None = typer.Option(None, "--output-dir", help="Parent of the run directory"),
+    query_ids: str | None = typer.Option(None, "--query-ids", help="Comma-separated query ids"),
     official: str | None = typer.Option(
         None, "--official", help="Comma-separated: deep_research_bench,deep_research_gym,browsecomp_plus"
     ),
@@ -117,6 +122,12 @@ def run_cmd(
         overrides.setdefault("dataset", {})["limit"] = limit
     if split:
         overrides.setdefault("dataset", {})["split"] = split
+    if query_ids:
+        overrides.setdefault("dataset", {})["query_ids"] = _benches(query_ids)
+    if run_id:
+        overrides["run_id"] = run_id
+    if output_dir is not None:
+        overrides["output_dir"] = str(output_dir)
     if agent:
         overrides.setdefault("agent", {})["name"] = agent
     if llm_provider:
@@ -133,6 +144,101 @@ def run_cmd(
     summary_path = manifest.run_dir / "metrics" / "summary.json"
     if summary_path.exists():
         _print_summary(json.loads(summary_path.read_text(encoding="utf-8")))
+
+
+@app.command("rollouts")
+def rollouts_cmd(
+    config: Path = typer.Option(
+        Path("configs/rollouts_drb_random.yaml"), "--config", "-c",
+        help="adr run config for one rollout (agent, dataset, budget)",
+    ),
+    out: Path = typer.Option(Path("runs/rollouts"), "--out", help="Corpus directory"),
+    n_seeds: int = typer.Option(10, "--n-seeds", help="Rollouts per query"),
+    seed_base: int = typer.Option(0, "--seed-base", help="First GR_ORCH_SEED"),
+    parallel: int = typer.Option(1, "--parallel", "-j", help="Concurrent rollout subprocesses"),
+    policy: str = typer.Option("random", "--policy", help="GR_ORCHESTRATOR value"),
+    query_ids: str | None = typer.Option(None, "--query-ids", help="Comma-separated query ids"),
+    split: str | None = typer.Option(None, "--split", help="train | val | test (pinned splits)"),
+    limit: int | None = typer.Option(None, "--limit", help="Max queries"),
+    evaluate: str | None = typer.Option(
+        None, "--evaluate", help="Judge each finished rollout, e.g. deep_research_bench (serialized)"
+    ),
+    env: list[str] = typer.Option([], "--env", help="Extra KEY=VALUE for the subprocess (repeatable)"),
+    timeout_s: float | None = typer.Option(None, "--timeout-s", help="Per-rollout timeout"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print the plan without running"),
+) -> None:
+    """Generate randomized orchestration rollouts (PILOT §4.5), resumable."""
+    from adr.rollouts.driver import run_rollouts
+
+    extra_env: dict[str, str] = {}
+    for item in env:
+        if "=" not in item:
+            raise typer.BadParameter(f"--env expects KEY=VALUE, got {item!r}")
+        k, v = item.split("=", 1)
+        extra_env[k.strip()] = v
+
+    counts: dict[str, int] = {}
+
+    def _on(res) -> None:  # noqa: ANN001
+        counts[res.status] = counts.get(res.status, 0) + 1
+        tag = {"done": "green", "skipped": "dim", "failed": "red", "dry-run": "cyan"}.get(res.status, "white")
+        extra = f" eval={'ok' if res.evaluated else 'no'}" if evaluate and res.status != "dry-run" else ""
+        console.print(f"[{tag}]{res.status:8}[/{tag}] {res.run_id}" + (f"  {res.wall_s}s" if res.wall_s else "") + extra)
+        if res.status == "dry-run":
+            console.print("  " + " ".join(res.extra.get("cmd", [])), style="dim")
+
+    results = run_rollouts(
+        config=config, out=out, n_seeds=n_seeds, seed_base=seed_base, parallel=parallel,
+        policy=policy, query_ids=_benches(query_ids) or None, split=split, limit=limit,
+        evaluate=evaluate, extra_env=extra_env, dry_run=dry_run, timeout_s=timeout_s, on_result=_on,
+    )
+    console.print(f"[bold]{len(results)} rollouts[/bold] -> {out}  " + ", ".join(f"{k}={v}" for k, v in sorted(counts.items())))
+
+
+@app.command("bc-pairs")
+def bc_pairs_cmd(
+    rollouts: list[Path] = typer.Argument(..., help="Rollout corpus dir(s) or individual run dirs"),
+    out: Path = typer.Option(Path("data/bc/bc_pairs.jsonl"), "--out"),
+    top_frac: float = typer.Option(0.1, "--top-frac", help="Fraction of rollouts (by return) to clone"),
+    min_per_query: int = typer.Option(1, "--min-per-query"),
+    max_per_query: int | None = typer.Option(None, "--max-per-query"),
+    require_quality: bool = typer.Option(True, "--require-quality/--allow-unscored",
+                                         help="Drop rollouts without a RACE score"),
+    policy: str | None = typer.Option("random", "--policy", help="Only clone rollouts from this policy ('' = any)"),
+    reward_config: Path | None = typer.Option(None, "--reward-config", help="YAML/JSON with RewardConfig fields"),
+    goal_file: Path | None = typer.Option(None, "--goal-file", help="JSON {run_id|query_id: G} for alpha_g"),
+    snippet_chars: int | None = typer.Option(None, "--snippet-chars"),
+    no_final_terminate: bool = typer.Option(False, "--no-final-terminate",
+                                            help="Do not relabel the last round as TERMINATE"),
+) -> None:
+    """Score rollouts with R(tau) and write the top-return rounds as BC pairs."""
+    import yaml
+
+    from adr.rollouts.bc_pairs import build_bc_pairs
+    from adr.rollouts.fork import ForkModuleMissing, load_fork_module
+    from adr.rollouts.reward import RewardConfig
+
+    try:
+        load_fork_module("serialize")
+    except ForkModuleMissing as exc:
+        raise typer.BadParameter(str(exc))
+
+    cfg = RewardConfig()
+    if reward_config:
+        cfg = RewardConfig.from_dict(yaml.safe_load(reward_config.read_text(encoding="utf-8")) or {})
+
+    stats = build_bc_pairs(
+        [Path(p) for p in rollouts], out, reward_cfg=cfg, top_frac=top_frac,
+        min_per_query=min_per_query, max_per_query=max_per_query, require_quality=require_quality,
+        require_policy=policy or None, final_round_terminate=not no_final_terminate,
+        snippet_chars=snippet_chars, goal_file=goal_file,
+    )
+    table = Table(title=f"bc_pairs -> {out}")
+    table.add_column("stat")
+    table.add_column("value", justify="right")
+    for k, v in stats.as_dict().items():
+        table.add_row(k, json.dumps(v) if isinstance(v, dict) else str(v))
+    console.print(table)
 
 
 @app.command("score")

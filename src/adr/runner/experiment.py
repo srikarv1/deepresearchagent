@@ -270,6 +270,11 @@ def _load_trajectories(run_dir: Path) -> list[Trajectory]:
 
 
 def _run_id(config: dict[str, Any], started: datetime) -> str:
+    # An explicit run_id (used by `adr rollouts` for resumable, addressable
+    # run directories) wins over the timestamped default.
+    explicit = str(config.get("run_id") or "").strip()
+    if explicit:
+        return explicit
     stamp = started.strftime("%Y%m%d-%H%M%S")
     name = str(config.get("run_name") or "run")
     return f"{stamp}-{name}"
