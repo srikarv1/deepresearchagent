@@ -23,9 +23,13 @@ SPLIT_NAMES = ("train", "val", "test")
 DEFAULT_SEED = 17
 DEFAULT_RATIOS = {"train": 0.70, "val": 0.10, "test": 0.20}
 BCP_SPLITS_PATH = ROOT / "data" / "benchmarks" / "browsecomp_plus" / "splits.json"
+# DeepResearch Bench (English): test pins the Table 4 queries (51-55) plus 5
+# held-out ids; train is the PILOT rollout corpus. See scripts/build_drb_splits.py.
+DRB_SPLITS_PATH = ROOT / "data" / "benchmarks" / "deep_research_bench" / "splits.json"
 
 _SPLIT_FILES = {
     DatasetName.BROWSECOMP_PLUS.value: BCP_SPLITS_PATH,
+    DatasetName.DEEP_RESEARCH_BENCH.value: DRB_SPLITS_PATH,
 }
 
 

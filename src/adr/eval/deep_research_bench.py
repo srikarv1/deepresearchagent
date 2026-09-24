@@ -6,8 +6,8 @@ extracts citations, scrapes them, and validates each claim.
 
 Both judges use an OpenAI-compatible backend (``utils/api.py``), selected by
 ``LLM_BACKEND``: ``openai`` (needs ``OPENAI_API_KEY``) or ``openrouter``
-(default, needs ``OPENROUTER_API_KEY``). FACT additionally scrapes through Jina
-and needs ``JINA_API_KEY``.
+(default, needs ``OPENROUTER_API_KEY``). FACT scrapes through Jina. Set
+``JINA_API_KEY``, or set ``JINA_READER=public`` to call ``r.jina.ai`` with no key.
 """
 
 from __future__ import annotations
@@ -202,7 +202,10 @@ def _fact(
     env: dict[str, str],
     timeout_s: float | None,
 ) -> dict[str, Any]:
-    if not (os.environ.get(SCRAPE_KEY) or env.get(SCRAPE_KEY)):
+    public = (env.get("JINA_READER") or os.environ.get("JINA_READER") or "").lower() in {
+        "public", "anon", "anonymous",
+    }
+    if not public and not (os.environ.get(SCRAPE_KEY) or env.get(SCRAPE_KEY)):
         return {
             "skipped": True,
             "reason": f"{SCRAPE_KEY} is not set; FACT scrapes cited pages through Jina",

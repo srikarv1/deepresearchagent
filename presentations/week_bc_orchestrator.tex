@@ -1,0 +1,653 @@
+\documentclass[aspectratio=169,11pt]{beamer}
+
+\usetheme{Madrid}
+\usecolortheme{default}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}[frame number]
+
+\title{Behavior-cloning the research orchestrator}
+\subtitle{What I built this week, with the numbers from the runs}
+\author{Srikar Vadlamani}
+\date{September 23, 2026}
+\institute{PILOT stage 1 \textbullet\ Deep Research Bench}
+
+\begin{document}
+
+\begin{frame}
+  \titlepage
+\end{frame}
+
+\begin{frame}{The one-sentence version}
+  \begin{block}{This week}
+    I collected randomized orchestrator trajectories, cloned the best ones
+    into a Qwen2.5-7B LoRA, and ran that policy against a frozen rule on the
+    validation queries.
+  \end{block}
+  \vspace{0.4em}
+  \begin{enumerate}
+    \item \textbf{Randomized rollouts.} 300 train trajectories. 167 actually had evidence.
+    \item \textbf{Behavior cloning.} 113 state--action rows from the top 25\% by reward.
+    \item \textbf{LoRA.} 3 epochs on an A100. Dev parses at 100\%. No invented evidence ids.
+    \item \textbf{Val, $n=8$.} RACE is a tie ($+0.003$). FACT support is higher for the fixed rule ($0.72$ vs.\ $0.64$). Learned costs about twice the tokens and the time.
+  \end{enumerate}
+  \vspace{0.5em}
+  Test queries 51--55 were not used to pick anything.
+\end{frame}
+
+\begin{frame}{What the orchestrator decides}
+  After every research round the policy reads the evidence pool and writes
+  exactly three lines.
+  \vspace{0.4em}
+  \begin{columns}[T]
+    \begin{column}{0.48\textwidth}
+      \textbf{Action $(u, m, w)$}
+      \begin{itemize}
+        \item \texttt{KEEP} --- which pages stay in context
+        \item \texttt{ALLOC} --- how the next search budget is split
+        \item \texttt{DECISION} --- \texttt{CONTINUE} or \texttt{TERMINATE}
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \textbf{Same text online and offline}
+      \begin{itemize}
+        \item The fork and the BC builder share one serializer.
+        \item The prompt the model sees at eval is the prompt it was trained on.
+        \item A bad answer does not crash the run: it keep-alls and continues, and the log says \texttt{parse\_failure}.
+      \end{itemize}
+    \end{column}
+  \end{columns}
+  \vspace{0.6em}
+  {\small Source: \texttt{gpt\_researcher/orchestration/serialize.py}. Eight features per page: relevance, redundancy, coverage, length, novelty, depth, round, new-or-old.}
+\end{frame}
+
+\begin{frame}{$(u, m, w)$ in plain language}
+  One research round ends. The policy must return three things. The letters are the paper's names for them.
+  \vspace{0.4em}
+  \begin{tabular}{llp{7.2cm}}
+    \hline
+    Letter & In the log & Meaning \\
+    \hline
+    $u$ & \texttt{DECISION} & Stop and write the report, or search again. \\
+    $m$ & \texttt{KEEP} & The set of page ids that stay in the working context. Everything else is dropped. \\
+    $w$ & \texttt{ALLOC} & How the next round's searches are split across the open branches. Weights sum to 1. \\
+    \hline
+  \end{tabular}
+  \vspace{0.5em}
+  If $u$ is \texttt{TERMINATE}, $w$ is ignored: there is no next search. The report is written from the pages in $m$.
+\end{frame}
+
+\begin{frame}[fragile]{What one page looks like}
+  Query 88, round 1. This page was \textbf{kept}.
+  \vspace{0.25em}
+  \begin{verbatim}
+id:    0609ac4b5505
+url:   deadline.com/.../one-hundred-years-of-solitude-...
+from:  "Garcia Marquez estate Netflix negotiation ..."
+depth: 1     round: 1     words: 1222
+  \end{verbatim}
+  \vspace{0.2em}
+  The orchestrator does not read the whole article. It sees a short line: the id, eight numbers, and a snippet.
+  \vspace{0.25em}
+  \begin{tabular}{llllllll}
+    \hline
+    $\rho$ & nov & red & cov & tok & depth & age & src \\
+    \hline
+    relevance & new? & duplicate? & covers a sub-question? & length & tree level & how old & .gov/.edu/other \\
+    \hline
+  \end{tabular}
+  \vspace{0.3em}
+  {\small Real page: Deadline, 6 March 2019, ``Netflix to adapt \ldots One Hundred Years of Solitude.'' File: \texttt{88-s0/gpt\_researcher/88.json}.}
+\end{frame}
+
+\begin{frame}{Every variable, and who uses it}
+  \small
+  Three different objects. Do not mix them.
+  \vspace{0.25em}
+  \begin{tabular}{lp{8.6cm}}
+    \hline
+    Object & Variables \\
+    \hline
+    State the LoRA reads & Root question, sub-questions, round, tree depth, tokens used, context budget, and for each page: id, the 8 features below, new/retained, source domain, 160-character snippet. For each open branch: id, coverage gap, subquery. \\
+    Action it must emit & $u$ terminate, $m$ kept ids, $w$ branch weights. \\
+    Knobs that \emph{made} the training actions & The 11 \texttt{PARAM\_SPACE} draws (keep ratio, weights, stop rule, \ldots). Not shown to the LoRA. \\
+    Reward that \emph{picked} which actions to clone & $Q$ (RACE), $Q$ floored at 0.44, token cost, latency cost, coverage $\Phi$. \\
+    \hline
+  \end{tabular}
+  \vspace{0.35em}
+  Embeddings (\texttt{text-embedding-3-small}) are only used to \emph{compute} $\rho$, novelty, redundancy, coverage, and $\Phi$. The prompt does not contain the vectors.
+\end{frame}
+
+\begin{frame}{The 8 numbers on each page}
+  \small
+  Order is fixed: \texttt{rho nov red cov tok depth age src}. From \texttt{features.py}.
+  \vspace{0.2em}
+  \begin{tabular}{llp{6.4cm}}
+    \hline
+    Name & Symbol & Definition \\
+    \hline
+    Relevance & $\rho$ & Cosine of this page with the root question. \\
+    Novelty & nov & $1 -$ cosine with the most similar page already kept. \\
+    Redundancy & red & Fraction of other pages with cosine $> 0.85$. \\
+    Coverage & cov & Fraction of sub-questions this page matches (cosine $> 0.50$). \\
+    Length & tok & Estimated tokens, $\lfloor \mathrm{chars}/4 \rfloor$. \\
+    Depth & depth & Tree level that retrieved it. \\
+    Age & age & Rounds since it was retrieved. \\
+    Source & src & 2 = .gov/.edu, 1 = .org or Wikipedia, 0 = anything else. \\
+    \hline
+  \end{tabular}
+  \vspace{0.3em}
+  Two constants, not learned: $\tau = 0.85$ (near-duplicate) and $\tau_c = 0.50$ (covers a sub-question). Branch \texttt{gap} $= 1 - $ best cosine between a kept page and that branch's subquery.
+\end{frame}
+
+\begin{frame}[fragile]{What $(u,m,w)$ looked like on a round that continues}
+  Learned policy, query 64, round 1. Pool of 39 pages. Four open branches.
+  \vspace{0.2em}
+  \begin{verbatim}
+KEEP: <36 ids>
+ALLOC: A=0.11  B=0.05  C=0.41  D=0.43
+DECISION: CONTINUE
+  \end{verbatim}
+  \vspace{0.2em}
+  \begin{itemize}
+    \item $m$: 36 kept, 3 dropped.
+    \item $w$: the next search is split. C and D get about 40\% each. B is almost off.
+    \item $u$: \texttt{CONTINUE}. Round 2 only searches the branches $w$ funded.
+  \end{itemize}
+  \vspace{0.15em}
+  {\small \texttt{parse\_failure=false}. File: \texttt{runs/eval\_val\_learned/64-s0/gpt\_researcher/64.json}. Query 88 is the wrong picture for $w$: its only round set one branch to 1.00 and then terminated, so the weights were never used.}
+\end{frame}
+
+\begin{frame}{What a trajectory is}
+  A trajectory is the whole run of one question, not one decision.
+  \vspace{0.3em}
+  \begin{enumerate}
+    \item Planner writes sub-questions.
+    \item For each round: search, scrape, then one $(u, m, w)$.
+    \item If $u$ is continue, the next round searches only the branches $w$ funded, and the pool is whatever $m$ kept plus the new pages.
+    \item If $u$ is terminate, the writer turns the kept pages into the report.
+  \end{enumerate}
+  \vspace{0.35em}
+  Query 88's learned trajectory has \textbf{one} round, then a report. A deeper one (learned 64) has \textbf{six} rounds: six keep-sets, six allocations, and a terminate on the last.
+\end{frame}
+
+\begin{frame}[fragile]{What a trajectory looks like on disk}
+  \begin{verbatim}
+runs/eval_val_learned/88-s0/
+  trajectories/88.json        steps: search, prune, report
+  gpt_researcher/88.json      rounds[], decision.meta, pages
+  reports/88.md               the article that was scored
+  metrics/summary.json        pages kept, tokens, RACE
+  \end{verbatim}
+  \vspace{0.25em}
+  Two views of the same run.
+  \begin{itemize}
+    \item Harness step 1 is \texttt{\{"type": "prune", "rationale": "kept 37, pruned 10"\}}.
+    \item Fork round 1 stores the three-line action and \texttt{parse\_failure}.
+  \end{itemize}
+  \vspace{0.2em}
+  The train corpus is the same shape, under \texttt{runs/rollouts\_drb\_d3b4/57-s0/} and so on. Behavior cloning reads the fork file, not the markdown report.
+\end{frame}
+
+\begin{frame}[fragile]{The frozen rule, exactly}
+  Val fixed-policy command pins four of the eleven knobs. The other seven are still drawn once per question from seed 0.
+  \vspace{0.2em}
+  \begin{verbatim}
+GR_RANDOM_PARAMS = {
+  "keep_ratio": 0.8,
+  "min_rounds": 2,
+  "p_terminate": 1.0,
+  "temperature": 0.02
+}
+  \end{verbatim}
+  \vspace{0.15em}
+  \begin{itemize}
+    \item \textbf{keep\_ratio 0.8.} On a pool of 47, keep $\lceil 0.8 \times 47 \rceil = 38$ pages. Not ``keep 80\% of the internet.''
+    \item \textbf{temperature 0.02.} Almost no ranking noise. The order is the weighted score.
+    \item \textbf{min\_rounds 2.} Cannot stop after round 1, even if coverage is already high.
+    \item \textbf{p\_terminate 1.0.} As soon as round 2 is allowed, the coin flip is heads with probability 1. It always stops there.
+  \end{itemize}
+  So the frozen rule means: run two rounds, keep about 80\% each time, then write the report. Feature weights still depend on the question's seed. They are not a second learned model.
+\end{frame}
+
+\begin{frame}{Splits, so we do not cheat}
+  Deep Research Bench, English, seed 17. Depth 3, breadth 4. Scraper: BeautifulSoup. Budget: 150k tokens / 900s, not enforced.
+  \vspace{0.4em}
+  \begin{tabular}{lll}
+    \hline
+    Split & $n$ & Role \\
+    \hline
+    Train & 30 & Randomized corpus, then BC \\
+    Val & 10 & Fixed rule vs.\ learned. Not used to train. \\
+    Test & 10 & Held out. Table 4 pins are 51--55. \\
+    \hline
+  \end{tabular}
+  \vspace{0.6em}
+  Val ids: 59, 64, 65, 69, 84, 85, 88, 94, 95, 100.\\
+  {\small File: \texttt{data/benchmarks/deep\_research\_bench/splits.json}.}
+\end{frame}
+
+\begin{frame}{1. Why the rollouts are randomized}
+  The Table-4 baselines (\texttt{none}, \texttt{topk}, \ldots) are deterministic given the state.
+  Every trajectory of \texttt{topk} keeps the same kind of page. There is no action diversity, so there is nothing to clone.
+  \vspace{0.4em}
+  \texttt{RandomizedPolicy} (\texttt{orchestration/randomized.py}) does the opposite:
+  \begin{itemize}
+    \item Sample \textbf{11 orchestration parameters once} per query.
+    \item Reuse that same vector on every later round of that query.
+    \item The decision is still a heuristic (rank, allocate, stop). The randomness is in \emph{how aggressive} the heuristic is.
+  \end{itemize}
+  \vspace{0.3em}
+  Ten seeds on one question therefore span ``keep almost everything'' through ``keep 15\%'', and ``stop at round 1'' through ``keep going''.
+\end{frame}
+
+\begin{frame}{How one rollout is launched}
+  \texttt{adr rollouts} does not run 300 queries inside one process.
+  gpt-researcher's token counters are process-global, so each rollout is its own Python process.
+  \vspace{0.3em}
+  \begin{enumerate}
+    \item Plan every pair $(\text{query}, \text{seed})$ from the train split. Seeds are $0 \ldots 9$.
+    \item \texttt{run\_id} is \texttt{<qid>-s<seed>}, for example \texttt{57-s3}.
+    \item Skip the pair if \texttt{trajectories/<qid>.json} already has a report and no error. The corpus is resumable.
+    \item Subprocess: \texttt{adr run} with\\
+      \texttt{GR\_ORCHESTRATOR=random} and \texttt{GR\_ORCH\_SEED=<seed>}.
+    \item After the report, RACE is judged one rollout at a time. Two judges at once would overwrite the same file.
+  \end{enumerate}
+  \vspace{0.3em}
+  {\small Driver: \texttt{src/adr/rollouts/driver.py}. Config: \texttt{configs/rollouts\_drb\_random\_d3b4.yaml}.}
+\end{frame}
+
+\begin{frame}{The frozen agent every seed shared}
+  Nothing except the orchestrator changed across the 300 runs.
+  \vspace{0.3em}
+  \begin{tabular}{ll}
+    \hline
+    Dataset & Deep Research Bench, train split, 30 queries \\
+    Tree & depth 3, breadth 4, 5 search hits per subquery \\
+    Scraper & HTTP + BeautifulSoup (no Chrome) \\
+    Search & Tavily, key file \texttt{env/tavily.csv} \\
+    Writer / planner & Azure \texttt{gpt-5-mini} \\
+    Embeddings & \texttt{text-embedding-3-small} \\
+    Budget written down, not enforced & 150k tokens, 900 seconds \\
+    \hline
+  \end{tabular}
+  \vspace{0.4em}
+  {\small Agent file: \texttt{configs/agents/gpt\_researcher\_d3b4.yaml}. Output root: \texttt{runs/rollouts\_drb\_d3b4/}.}
+\end{frame}
+
+\begin{frame}{The 11 parameters, sampled once}
+  \small
+  From \texttt{PARAM\_SPACE} in \texttt{randomized.py}. Log-uniform means the sampler draws uniformly in log space, so small and large values are both reachable.
+  \vspace{0.3em}
+  \begin{tabular}{lll}
+    \hline
+    Name & Draw & What it does \\
+    \hline
+    \texttt{keep\_ratio} & Unif$(0.15, 1)$ & Fraction of the pool to keep \\
+    \texttt{budget\_frac} & Unif$(0.3, 1)$ & Token cap on the kept set \\
+    \texttt{temperature} & LogUnif$(0.02, 0.5)$ & How much Gumbel noise shakes the ranking \\
+    \texttt{w\_nov, w\_red, w\_cov} & Unif$(0, 1)$ & Feature weights \\
+    \texttt{w\_len} & Unif$(0, 0.5)$ & Penalty on long pages \\
+    \texttt{alloc\_concentration} & LogUnif$(0.5, 20)$ & Peaked vs.\ flat branch split \\
+    \texttt{min\_rounds} & $\{1,2,3\}$ & Cannot stop before this round \\
+    \texttt{p\_terminate} & Unif$(0, 0.25)$ & Coin-flip stop, after \texttt{min\_rounds} \\
+    \texttt{phi\_gain\_stop} & Unif$(0, 0.05)$ & Stop if coverage gain is tiny \\
+    \hline
+  \end{tabular}
+\end{frame}
+
+\begin{frame}{What the code does with those parameters}
+  \textbf{Keep.} Score each page
+  \[
+    \rho + w_{\mathrm{nov}}\mathrm{nov} - w_{\mathrm{red}}\mathrm{red} + w_{\mathrm{cov}}\mathrm{cov} - w_{\mathrm{len}}\widehat{\mathrm{tok}}
+  \]
+  add Gumbel noise scaled by \texttt{temperature}, and keep the top $\lceil \texttt{keep\_ratio}\cdot n\rceil$ that still fit under the token cap.
+  \vspace{0.35em}
+  \textbf{Allocate.} Dirichlet whose mean follows each open branch's coverage gap. High \texttt{alloc\_concentration} puts almost all of the next search on the biggest gap.
+  \vspace{0.35em}
+  \textbf{Stop.} Only after \texttt{min\_rounds}. Then stop on a Bernoulli(\texttt{p\_terminate}) draw, or if the coverage gain fell below \texttt{phi\_gain\_stop}.
+  \vspace{0.35em}
+  The seed is \texttt{sha256(GR\_ORCH\_SEED | question)}, so seed 3 on query 57 is the same trajectory if you rerun it.
+\end{frame}
+
+\begin{frame}{What gets written, and why BC can replay it}
+  Each round's \texttt{decision.meta} stores the parameters, the eight features of every page, the frontier gaps, $\Phi$ before and after, and the seed.
+  \vspace{0.3em}
+  The offline builder reads that meta and calls the \textbf{same} \texttt{serialize\_state} the online policy uses. The training prompt is not a reconstruction from memory. It is the string the policy would have been shown.
+  \vspace{0.4em}
+  On disk, one rollout is a folder:
+  \begin{itemize}
+    \item \texttt{57-s0/trajectories/57.json} --- harness steps and the report
+    \item \texttt{57-s0/gpt\_researcher/57.json} --- the fork's rounds and \texttt{meta}
+    \item \texttt{57-s0/metrics/summary.json} --- tokens, reads, retained pages
+    \item \texttt{logs/57-s0.log} --- the subprocess log
+    \item \texttt{manifest.jsonl} --- one row per rollout: done / failed
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{The run I actually executed}
+  \begin{tabular}{lr}
+    \hline
+    Manifest rows & 300 \\
+    Queries & 30 (ids 57 through 99, the train split) \\
+    Seeds & 0 through 9 \\
+    Status \texttt{done} & 299 \\
+    Status \texttt{failed} & 1 (\texttt{79-s2}) \\
+    \hline
+  \end{tabular}
+  \vspace{0.45em}
+  \texttt{79-s2} died while the planner was asking \texttt{gpt-5-mini} for the research plan: empty API response, no report. A rerun of the same command would retry only that id, because every other folder already counts as complete.
+  \vspace{0.35em}
+  {\small Counted from \texttt{runs/rollouts\_drb\_d3b4/manifest.jsonl} on disk: 299 done, 1 failed.}
+\end{frame}
+
+\begin{frame}{What those 300 runs actually contain}
+  \begin{tabular}{lr}
+    \hline
+    Planned rollouts & 300 \\
+    Finished with a report & 299 \\
+    Failed (\texttt{79-s2}, empty planner response) & 1 \\
+    Report \textbf{and} scraped pages & \textbf{167} \\
+    Report written from zero pages & 132 \\
+    \hline
+  \end{tabular}
+  \vspace{0.5em}
+  The 132 empty runs are queries 81--99, after the Tavily keys hit their cap.
+  They have no evidence pool, so they contribute \textbf{zero} BC rows.
+  \vspace{0.4em}
+  Usable slice used for reward and BC: queries \textbf{57--80}.
+\end{frame}
+
+\begin{frame}{How the corpus died, query by query}
+  Search was the binding constraint, not the orchestrator.
+  \vspace{0.3em}
+  \begin{tabular}{ll}
+    \hline
+    Queries 57--78 & 10/10 seeds have scraped pages \\
+    Query 79 & 9/10 (the miss is \texttt{79-s2}) \\
+    Query 80 & 8/10 \\
+    Queries 81--99 & Reports exist, \textbf{retained pages = 0} \\
+    \hline
+  \end{tabular}
+  \vspace{0.45em}
+  Eight Tavily keys were in rotation. They exhausted around query 80.
+  After that the agent still called search, got nothing back, and wrote a report from the planner's own text.
+  Those folders look ``done'' in the manifest. They are not training data: \texttt{bc-pairs} emits 0 rows from them because there is no evidence pool and no features.
+  \vspace{0.35em}
+  On the 167 runs that did scrape: mean 26 pages kept, mean 104 reads, mean $\sim$137k tokens, mean $\sim$7 minutes.
+\end{frame}
+
+\begin{frame}{What the reward is ranking}
+  On the 166 good rollouts that also have a RACE score:
+  \vspace{0.3em}
+  \begin{tabular}{lrl}
+    \hline
+    & mean & correlation with $R$ \\
+    \hline
+    RACE quality $Q$ & 0.468 (sd 0.019) & \textbf{0.10} \\
+    Coverage shaping $\Phi$ & 0.71 & \textbf{0.75} \\
+    Lower latency & --- & 0.62 \\
+    Lower tokens & --- & 0.48 \\
+    \hline
+  \end{tabular}
+  \vspace{0.5em}
+  $Q$ barely moves (0.42--0.51). The reward mostly prefers trajectories that
+  cover the question and finish cheaper. That is a property of this corpus,
+  not a claim that RACE does not matter.
+  \vspace{0.3em}
+  {\small BC then drops anything with $Q < 0.44$ so a cheap empty-ish run cannot win on cost alone.}
+\end{frame}
+
+\begin{frame}{2. The behavior-cloning set}
+  From queries 57--80 only.
+  \vspace{0.3em}
+  \begin{tabular}{lr}
+    \hline
+    Trajectories loaded & 170 \\
+    Kept (top 25\% of $R$, $Q \ge 0.44$, $\ge 2$ per query) & \textbf{52} \\
+    State--action rows & \textbf{113} \\
+    Reward cutoff & 0.641 (max 0.699) \\
+    Train rows (queries 57--78) & 104 \\
+    Dev rows (queries 79--80, not in the LoRA train file) & 9 \\
+    \hline
+  \end{tabular}
+  \vspace{0.4em}
+  {\small \texttt{data/bc/bc\_pairs\_d3b4\_v1\_stats.json}. Each row is one round: the serialized pool, and the KEEP / ALLOC / DECISION the random policy took.}
+\end{frame}
+
+\begin{frame}[fragile]{What one training target looks like}
+  The model is not trained to write the report. It is trained to copy this action.
+  \vspace{0.3em}
+  \begin{verbatim}
+KEEP: 0609ac4b5505 0aab52b2a926 ...
+ALLOC: branchA=0.25 branchB=0.75
+DECISION: CONTINUE
+  \end{verbatim}
+  \vspace{0.2em}
+  Loss is on the assistant turn only. Evidence ids in \texttt{KEEP} have to be copied from the prompt. Inventing an id is a real error, and we count it.
+\end{frame}
+
+\begin{frame}{3. LoRA}
+  \begin{itemize}
+    \item Base: \texttt{Qwen2.5-7B-Instruct}, 4-bit. LoRA rank 16 on all projections.
+    \item 3 epochs, lr $2\times 10^{-4}$, batch 1, grad accumulation 8.
+    \item Hardware: A100. Wall time \textbf{535 seconds}.
+  \end{itemize}
+  \vspace{0.3em}
+  \begin{tabular}{cccc}
+    \hline
+    Epoch & Train loss & Val loss & Val token acc \\
+    \hline
+    1 & 0.105 & 0.126 & 95.4\% \\
+    2 & 0.088 & 0.109 & 96.0\% \\
+    3 & 0.067 & \textbf{0.107} & 95.9\% \\
+    \hline
+  \end{tabular}
+  \vspace{0.4em}
+  Val loss fell every epoch. Token accuracy is a soft number: most tokens are ids copied from the prompt.
+\end{frame}
+
+\begin{frame}{Dev check: the number that matters}
+  Nine held-out rounds (queries 79--80). Greedy decode.
+  \vspace{0.3em}
+  \begin{tabular}{lcc}
+    \hline
+    & First try (\texttt{max\_new\_tokens=400}) & After raising the cap to 1200 \\
+    \hline
+    Parses as KEEP/ALLOC/DECISION & 0.33 & \textbf{1.00} \\
+    KEEP Jaccard vs.\ cloned action & 0.50 & \textbf{0.61} \\
+    CONTINUE/TERMINATE accuracy & 0.00 & \textbf{0.44} \\
+    ALLOC L1 & 0.83 & \textbf{0.62} \\
+    Invented ids & 5 & \textbf{0} \\
+    \hline
+  \end{tabular}
+  \vspace{0.4em}
+  The first column was truncation, not a bad adapter. Gold completions run to $\sim$900 tokens because every kept id is spelled out. The adapter we serve is the second column.
+\end{frame}
+
+\begin{frame}{4. Fixed rule, the baseline}
+  Same randomized code as the corpus. Four knobs pinned on every val question (see the earlier slide): keep 80\%, almost no ranking noise, at least 2 rounds, then always stop.
+  \vspace{0.4em}
+  \begin{itemize}
+    \item It is not the learned model, and it is not the average of the 300 train runs.
+    \item The other seven knobs (feature weights, branch concentration, \ldots) are still sampled once per question from seed 0. Same question, same weights, if you rerun it.
+    \item All \textbf{10/10} val queries finished with a report and real pages.
+  \end{itemize}
+  \vspace{0.3em}
+  On query 88 this rule kept 46 pages and pruned 30\%, across the two forced rounds. The learned policy kept 37 and stopped after one round.
+\end{frame}
+
+\begin{frame}{5. Learned policy online}
+  Same agent, same depth and breadth. The only change is \texttt{GR\_ORCHESTRATOR=learned}, calling the LoRA.
+  \vspace{0.4em}
+  \begin{tabular}{lr}
+    \hline
+    Val queries with a report & \textbf{8 / 10} \\
+    Orchestrator calls that failed to parse & \textbf{0} on those 8 \\
+    \texttt{65} & Hit the 30-minute cap. No report. \\
+    \texttt{100} & Not run. Search was stopped. \\
+    \hline
+  \end{tabular}
+  \vspace{0.4em}
+  Proof for each finished query is \texttt{gpt\_researcher/<id>.json}: \texttt{parse\_failure=false} on every round, and the last round's stop reason is \texttt{model}, not a fallback.
+\end{frame}
+
+\begin{frame}{Worked example: query 64}
+  \textbf{Question.} UAV attitude control is usually one cascaded PID, and that setting only works in one flight regime. How should the parameters be chosen across flight states?
+  \vspace{0.25em}
+  Learned policy, six decisions. Every one parsed (\texttt{parse\_failure=false}). The last stop reason is \texttt{model}.
+  \vspace{0.2em}
+  \small
+  \begin{tabular}{rrrrll}
+    \hline
+    round & pool & kept & dropped & decision & allocation \\
+    \hline
+    1 & 39 & 36 & 3 & CONTINUE & 0.11, 0.05, 0.41, 0.43 \\
+    2 & 50 & 47 & 3 & CONTINUE & 0.11, 0.44, 0.45 \\
+    3 & 75 & 46 & 29 & CONTINUE & 0.30, 0.33, 0.37 \\
+    4 & 64 & 64 & 0 & CONTINUE & 0.62, 0.38 \\
+    5 & 66 & 62 & 4 & CONTINUE & 1.00 (only one branch open) \\
+    6 & 78 & 64 & 14 & TERMINATE & 1.00, unused \\
+    \hline
+  \end{tabular}
+  \vspace{0.3em}
+  \normalsize
+  Same question, fixed rule: RACE 0.487 against learned 0.495. FACT support 0.45 against 0.39. Fixed kept 36 pages and read 99. Learned kept 64 and read 210.
+  \vspace{0.2em}
+  {\small File: \texttt{runs/eval\_val\_learned/64-s0/gpt\_researcher/64.json}.}
+\end{frame}
+
+\begin{frame}{Pages kept on the 8 shared queries}
+  Same questions. Fixed is the frozen rule. Learned is the LoRA.
+  \vspace{0.2em}
+  \small
+  \begin{tabular}{ccccc}
+    \hline
+    id & fixed kept & learned kept & fixed pruned & learned pruned \\
+    \hline
+    59 & 53 & 78 & 28\% & 28\% \\
+    64 & 36 & 64 & 28\% & 45\% \\
+    69 & 59 & 71 & 30\% & 1\% \\
+    84 & 46 & 34 & 27\% & 21\% \\
+    85 & 49 & 97 & 32\% & 13\% \\
+    88 & 46 & 37 & 30\% & 21\% \\
+    94 & 60 & 95 & 29\% & 46\% \\
+    95 & 45 & 92 & 32\% & 46\% \\
+    \hline
+    mean & 49 & 71 & 30\% & 28\% \\
+    \hline
+  \end{tabular}
+  \vspace{0.3em}
+  Learned keeps more pages on average because it often runs more rounds before it stops. Prune rate is similar. This is cost and behavior, not quality.
+\end{frame}
+
+\begin{frame}{Paired RACE, same 8 questions}
+  Judge: \texttt{gpt-5-mini} on Azure. Official Deep Research Bench RACE. Queries 65 and 100 are out: learned never finished them.
+  \vspace{0.25em}
+  \small
+  \begin{tabular}{cccc}
+    \hline
+    id & fixed & learned & $\Delta$ \\
+    \hline
+    59 & 0.480 & 0.471 & $-0.009$ \\
+    64 & 0.487 & 0.495 & $+0.008$ \\
+    69 & 0.468 & 0.467 & $-0.001$ \\
+    84 & 0.430 & 0.446 & $+0.016$ \\
+    85 & 0.485 & 0.482 & $-0.003$ \\
+    88 & 0.470 & 0.471 & $+0.001$ \\
+    94 & 0.463 & 0.483 & $+0.020$ \\
+    95 & 0.490 & 0.483 & $-0.007$ \\
+    \hline
+    mean & \textbf{0.471} & \textbf{0.475} & $\mathbf{+0.003}$ \\
+    \hline
+  \end{tabular}
+  \vspace{0.35em}
+  Train-corpus RACE on the 166 rollouts that kept pages was $0.468$, sd $0.019$. A gain of $0.003$ is inside that noise.
+  Breakdown, fixed $\rightarrow$ learned: comprehensiveness $+0.005$, insight $+0.003$, instruction following $+0.001$, readability $+0.006$.
+\end{frame}
+
+\begin{frame}{Paired FACT, public reader}
+  Same reports. The paid Jina key returned 402, so every cited URL was fetched by putting \texttt{https://r.jina.ai/} in front of it, with no API key. The judge is still \texttt{gpt-5-mini}.
+  \vspace{0.2em}
+  \small
+  \begin{tabular}{ccccc}
+    \hline
+    id & fixed support & learned support & fixed claims & learned claims \\
+    \hline
+    59 & 0.80 & 0.82 & 15 & 22 \\
+    64 & 0.45 & 0.39 & 20 & 23 \\
+    69 & 0.96 & 0.94 & 24 & 18 \\
+    84 & 0.63 & 0.63 & 19 & 16 \\
+    85 & 0.78 & 0.46 & 46 & 37 \\
+    88 & 0.75 & 0.71 & 12 & 38 \\
+    94 & 0.75 & 0.59 & 36 & 34 \\
+    95 & 0.60 & 0.58 & 10 & 12 \\
+    \hline
+    mean & \textbf{0.72} & \textbf{0.64} & 23 & 25 \\
+    \hline
+  \end{tabular}
+  \vspace{0.3em}
+  Support rate is the fraction of extracted claim--URL pairs the judge marked supported. Learned is lower on 7 of 8 questions. Queries 85 and 94 are most of the gap.
+\end{frame}
+
+\begin{frame}{What that quality cost}
+  Means on the same 8 questions.
+  \vspace{0.3em}
+  \begin{tabular}{lcc}
+    \hline
+    & fixed rule & learned \\
+    \hline
+    Pages kept & 49 & 71 \\
+    Pages read & 96 & 143 \\
+    Prune rate & 30\% & 28\% \\
+    Tokens & 139k & 224k \\
+    Wall clock & 6.9 min & 14.7 min \\
+    \hline
+  \end{tabular}
+  \vspace{0.4em}
+  Learned keeps more because it often runs past the fixed rule's forced stop at round 2. The extra search did not raise RACE, and the share of claims that check out went down.
+\end{frame}
+
+\begin{frame}{What I will not claim in the meeting}
+  \begin{itemize}
+    \item Not ``the learned policy beats the fixed rule.'' RACE moved by $+0.003$. FACT support went from $0.72$ to $0.64$, and the run cost about twice as much.
+    \item Not a test-set number. Queries 51--55 have not been touched.
+    \item Not that token accuracy 96\% means the decisions match. Jaccard is 0.61 and the stop bit is right 44\% of the time on 9 dev rounds.
+    \item Not that the 132 empty train rollouts are data. They were excluded.
+    \item Not that the first FACT pass counted citations. That pass was a Jina 402. The numbers above are the public-reader rescore.
+  \end{itemize}
+  \vspace{0.35em}
+  \begin{block}{What is solid}
+    The pipeline is real, and on these 8 questions the LoRA does not improve the report. It copies a legal action, searches longer, and lands on the same RACE score.
+  \end{block}
+\end{frame}
+
+\begin{frame}{Where the proof lives}
+  \small
+  \begin{tabular}{ll}
+    \hline
+    Claim & File \\
+    \hline
+    Randomized policy code & \texttt{orchestration/randomized.py} \\
+    Rollout driver & \texttt{src/adr/rollouts/driver.py} \\
+    299 done / 1 failed & \texttt{runs/rollouts\_drb\_d3b4/manifest.jsonl} \\
+    Splits, test held out & \texttt{data/benchmarks/.../splits.json} \\
+    52 trajectories, 113 rows & \texttt{data/bc/bc\_pairs\_d3b4\_v1\_stats.json} \\
+    Train 104 / dev 9 & \texttt{data/bc/oai\_train.jsonl}, \texttt{oai\_dev.jsonl} \\
+    LoRA losses & Colab log, epoch table on the training slide \\
+    Dev Jaccard / 0 hallucinated ids & Section 3 of \texttt{pilot\_bc\_qwen\_lora.ipynb} \\
+    Query 88 action & \texttt{runs/eval\_val\_learned/88-s0/gpt\_researcher/88.json} \\
+    Kept-page table & \texttt{metrics/summary.json} under each \texttt{*-s0} \\
+    Paired RACE and FACT & \texttt{runs/eval\_val\_compare.md} \\
+    \hline
+  \end{tabular}
+\end{frame}
+
+\begin{frame}{Next}
+  \begin{enumerate}
+    \item The val comparison is done at $n=8$. Leave 65 and 100 out, or rerun 65 with a longer cap and then 100.
+    \item Do not open the test split until the val policy is frozen. Nothing here says the learned policy should replace the fixed rule.
+    \item If FACT is quoted again, say it used the public \texttt{r.jina.ai} reader. The paid key has no balance.
+  \end{enumerate}
+\end{frame}
+
+\end{document}

@@ -1,0 +1,46 @@
+# One randomized rollout on DeepResearch Bench, driven by `adr rollouts`.
+#
+#   adr rollouts --config configs/rollouts_drb_random.yaml \
+#       --out runs/rollouts_drb --n-seeds 10 -j 4 --limit 30 \
+#       --evaluate deep_research_bench
+#
+# The driver overrides dataset.query_ids / run_id / output_dir per rollout and
+# sets GR_ORCHESTRATOR=random GR_ORCH_SEED=<seed> in the subprocess env. Every
+# other knob (models, depth/breadth, budget) is read from here so the corpus is
+# generated under one frozen agent configuration.
+run_name: rollout-d3b4
+output_dir: runs/rollouts
+seed: 17
+concurrency: 1            # gpt-researcher trackers are process-global
+
+dataset:
+  name: deep_research_bench
+  language: en
+  limit: 30
+  query_ids: []
+
+agent:
+  name: gpt_researcher
+  config: configs/agents/gpt_researcher_d3b4.yaml
+
+llm:
+  provider: mock
+  model: unused
+search:
+  backend: mock
+  top_k: 5
+
+# B_tok / B_lat for the reward's normalized cost terms (Eq. 14). Set them to
+# the reference budget you intend to train PILOT for; `enforce: false` so a
+# rollout that overruns is still scored (and penalized) rather than aborted.
+budget:
+  max_steps: 32
+  max_searches: 64
+  max_reads: 128
+  max_tokens: 150000
+  max_latency_s: 900.0
+  max_evidence: 512
+  enforce: false
+
+eval:
+  official_benches: []    # judged afterwards by the driver's --evaluate
