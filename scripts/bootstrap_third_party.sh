@@ -61,6 +61,79 @@ link_or_clone "$DEST/deep_research_bench" "deepresearch_bench_race.py" "$DRB_REP
 link_or_clone "$DEST/deepresearchgym" "eval_quality_async.py" "$GYM_REPO_URL" \
   "${ADR_GYM_DIR:-}" "$PARENT/deepresearchgym" "$PARENT/deepresearch_benchmarking"
 
+# Patch Gym judges: (1) temperature=0 guard for gpt-5-mini,
+# (2) exponential backoff retry on 429 rate limit errors.
+_patch_gym_judges() {
+  local gym="$DEST/deepresearchgym"
+  local patched=0
+
+  # --- temperature guard ---
+  local t_pattern='temperature=0'
+  local t_replacement='**({"temperature": 0} if model not in ("gpt-5-mini",) else {})'
+  for f in \
+    "$gym/eval_quality_async.py" \
+    "$gym/eval_kpr_async.py" \
+    "$gym/eval_citation_async.py" \
+    "$gym/eval_citation_recall_async.py" \
+    "$gym/eval_citation_clueweb_async.py" \
+    "$gym/key_point/aggregate.py" \
+    "$gym/key_point/key_point_extract.py"; do
+    [[ -f "$f" ]] || continue
+    if grep -q "$t_pattern" "$f" 2>/dev/null; then
+      sed -i.bak "s|$t_pattern|$t_replacement|g" "$f" && rm -f "$f.bak"
+      patched=$((patched + 1))
+    fi
+  done
+
+  # --- retry wrapper injection ---
+  # Adds _retry_parse() with exponential backoff (max 5 attempts, 2/4/8/16/32s)
+  # and replaces bare client.beta.chat.completions.parse calls with it.
+  local retry_marker='# _retry_parse injected'
+  for f in \
+    "$gym/eval_quality_async.py" \
+    "$gym/eval_kpr_async.py" \
+    "$gym/eval_citation_async.py" \
+    "$gym/eval_citation_recall_async.py" \
+    "$gym/eval_citation_clueweb_async.py"; do
+    [[ -f "$f" ]] || continue
+    if grep -q "$retry_marker" "$f" 2>/dev/null; then
+      continue  # already patched
+    fi
+    # Insert retry helper after the client = AsyncOpenAI(...) line
+    sed -i.bak '/^client = AsyncOpenAI/a\
+\
+'"$retry_marker"'\
+import random as _rand\
+async def _retry_parse(**kwargs):\
+    \"\"\"Retry client.beta.chat.completions.parse with exponential backoff.\"\"\"\
+    for _attempt in range(5):\
+        try:\
+            return await client.beta.chat.completions.parse(**kwargs)\
+        except Exception as _e:\
+            if "429" in str(_e) or "rate_limit" in str(_e):\
+                _wait = (2 ** (_attempt + 1)) + _rand.random()\
+                print(f"Rate limited, retrying in {_wait:.1f}s (attempt {_attempt + 1}/5)")\
+                await asyncio.sleep(_wait)\
+            else:\
+                raise\
+    return await client.beta.chat.completions.parse(**kwargs)
+' "$f" && rm -f "$f.bak"
+    # Replace calls outside of _retry_parse. The function body uses
+    # _orig_parse to avoid infinite recursion.
+    sed -i.bak 's|await client\.beta\.chat\.completions\.parse(|await _retry_parse(|g' "$f" && rm -f "$f.bak"
+    # _retry_parse itself must call the original client method, not itself.
+    sed -i.bak 's|return await _retry_parse(\*\*kwargs)|return await client.beta.chat.completions.parse(**kwargs)|g' "$f" && rm -f "$f.bak"
+    # Lower concurrency to avoid saturating the rate limit.
+    sed -i.bak 's|Semaphore(100)|Semaphore(5)|g' "$f" && rm -f "$f.bak"
+    patched=$((patched + 1))
+  done
+
+  if [[ $patched -gt 0 ]]; then
+    echo "PATCHED  ${patched} Gym judge files (temperature guard + retry backoff)"
+  fi
+}
+_patch_gym_judges
+
 # Agent under test, not a judge. Marker is the fork's trajectory logger so a
 # plain upstream checkout is not mistaken for the instrumented one.
 link_or_clone "$DEST/gpt-researcher" "gpt_researcher/utils/trajectory_logger.py" "$GR_REPO_URL" \

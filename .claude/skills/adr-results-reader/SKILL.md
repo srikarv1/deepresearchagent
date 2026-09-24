@@ -1,6 +1,6 @@
 ---
 name: adr-results-reader
-description: Read, analyze, and explain deepresearchagent (adr) harness run results. Use when the user asks about run outputs, trajectories, evidence, rounds, RACE/FACT scores, embedding analysis, or anything under runs/ or a zip from an adr run. Also use when the user mentions trajectory steps, stats_before, frontier nodes, evidence items, or npz files.
+description: Read, analyze, and explain deepresearchagent (adr) harness run results. Use when the user asks about run outputs, trajectories, evidence, rounds, RACE/FACT scores, Gym quality/KPR/citation scores, embedding analysis, or anything under runs/ or a zip from an adr run. Also use when the user mentions trajectory steps, stats_before, frontier nodes, evidence items, or npz files.
 ---
 
 # ADR Results Reader
@@ -18,9 +18,20 @@ Every run directory follows this layout:
   gpt_researcher/<id>.json           # Raw fork trajectory (rounds, evidence, subquestions)
   gpt_researcher/<id>_emb.npz       # Embedding vectors (evidence, query, subquestions, frontier nodes)
   reports/<id>.md                    # Generated markdown report
-  metrics/local.json                 # Per-query computed metrics
-  metrics/summary.json               # Aggregate metrics + official judge scores
-  exports/deep_research_bench/       # JSONL for DRB RACE + FACT judges
+  metrics/
+    local.json                       # Per-query computed metrics
+    summary.json                     # Aggregate metrics + official judge scores
+    deep_research_gym/               # Gym judge output files
+      quality_<judge>.json           # Per-query quality scores (6 criteria)
+      relevance_<judge>.json         # Per-query KPR labels and rates
+      faithfullness_<judge>.json     # Per-query citation faithfulness (if enabled)
+  exports/
+    deep_research_bench/             # JSONL for DRB RACE + FACT judges
+    deep_research_gym/               # .q/.a files for Gym judges
+      <run_name>/<id>.q              # Query text
+      <run_name>/<id>.a              # Report text
+      gpt_researcher/<id>.q          # Duplicate export keyed by agent name
+      gpt_researcher/<id>.a
   errors/                            # Stack traces for failed queries
 ```
 
@@ -126,12 +137,62 @@ mean_tokens, mean_prompt_tokens, mean_completion_tokens
 mean_wall_s
 mean_n_retained, mean_n_pruned, mean_prune_rate
 mean_n_citations, mean_article_chars
+
+# DRB scores (when official_benches includes deep_research_bench)
 scores.race_overall_score          RACE judge overall (0-1)
 scores.race_comprehensiveness      RACE sub-dimension
 scores.race_insight                RACE sub-dimension
 scores.race_instruction_following  RACE sub-dimension
 scores.race_readability            RACE sub-dimension
 scores.fact_valid_rate             FACT citation validity (0-1)
+
+# Gym scores (when official_benches includes deep_research_gym)
+scores.gym_quality                   Quality overall (normalized, 0-100)
+scores.gym_quality_clarity           Per-criterion average (1-10 scale)
+scores.gym_quality_depth             Per-criterion average
+scores.gym_quality_balance           Per-criterion average
+scores.gym_quality_breadth           Per-criterion average
+scores.gym_quality_support           Per-criterion average
+scores.gym_quality_insightfulness    Per-criterion average
+scores.gym_average_support_rate      KPR: % key points supported (0-100)
+scores.gym_average_omitted_rate      KPR: % key points omitted (0-100)
+scores.gym_average_contradicted_rate KPR: % key points contradicted (0-100)
+```
+
+## Official block (summary.json > official)
+
+### deep_research_bench
+
+```
+official.deep_research_bench
+  .race.scores.overall_score, .comprehensiveness, .insight, ...
+  .fact.scores.valid_rate, .total_citations, .total_valid_citations
+```
+
+### deep_research_gym
+
+```
+official.deep_research_gym
+  .bench                             "deep_research_gym"
+  .judge_model                       e.g. "gpt-5-mini"
+  .official                          true if any judge produced scores
+  .reason                            null or error description
+  .quality
+    .n                               Number of queries scored
+    .average_normalized_score        Overall quality (0-100)
+    .per_criterion.{Clarity,Depth,Balance,Breadth,Support,Insightfulness}
+      .average_rating                Mean rating (1-10)
+    .per_query_normalized            {query_id: score}
+  .kpr
+    .n                               Number of queries scored
+    .average_support_rate            % supported (0-100)
+    .average_omitted_rate            % omitted (0-100)
+    .average_contradicted_rate       % contradicted (0-100)
+    .per_query                       {query_id: {support_rate, omitted_rate, contradicted_rate}}
+    .key_point_dir                   Path to aggregated key points
+  .citation                          null unless run_citation=True
+    .n
+    .average_citation_score
 ```
 
 ## Common analysis patterns

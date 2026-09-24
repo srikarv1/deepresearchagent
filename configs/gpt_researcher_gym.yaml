@@ -12,7 +12,7 @@ dataset:
 
 agent:
   name: gpt_researcher
-  config: configs/agents/gpt_researcher.yaml
+  config: configs/agents/gpt_researcher_gym.yaml
 
 # Not used by gpt_researcher (it brings its own stack) but required by the
 # runner. mock keeps the harness from opening a second client.
@@ -34,5 +34,4 @@ budget:
   enforce: false
 
 eval:
-  official_benches: []
-  # official_benches: [deep_research_gym]
+  official_benches: [deep_research_gym]
