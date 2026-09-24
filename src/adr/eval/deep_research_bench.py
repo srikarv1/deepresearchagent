@@ -6,8 +6,8 @@ extracts citations, scrapes them, and validates each claim.
 
 Both judges use an OpenAI-compatible backend (``utils/api.py``), selected by
 ``LLM_BACKEND``: ``openai`` (needs ``OPENAI_API_KEY``) or ``openrouter``
-(default, needs ``OPENROUTER_API_KEY``). FACT additionally scrapes through Jina
-and needs ``JINA_API_KEY``.
+(default, needs ``OPENROUTER_API_KEY``). FACT scrapes through Jina. Set
+``JINA_API_KEY``, or set ``JINA_READER=public`` to call ``r.jina.ai`` with no key.
 """
 
 from __future__ import annotations
@@ -86,7 +86,8 @@ def run_deep_research_bench(
 
     if run_race:
         result["race"] = _race(
-            bench_root, model_name, query_file, language, workers, skip_cleaning, env, timeout_s
+            bench_root, model_name, query_file, language, workers, skip_cleaning, env, timeout_s,
+            run_dir=run_dir,
         )
     if run_fact:
         result["fact"] = _fact(bench_root, model_name, dest, query_file, workers, env, timeout_s)
@@ -111,9 +112,16 @@ def _race(
     skip_cleaning: bool,
     env: dict[str, str],
     timeout_s: float | None,
+    run_dir: Path | None = None,
 ) -> dict[str, Any]:
     out_dir = bench_root / "results" / "race" / model_name
     out_dir.mkdir(parents=True, exist_ok=True)
+    # RACE appends to raw_results.jsonl and skips ids it already scored, so a
+    # stale file from an earlier run of the same model name would silently
+    # reuse old scores. Start clean; the per-run copy below keeps history.
+    stale = out_dir / "raw_results.jsonl"
+    if stale.exists():
+        stale.unlink()
     args: list[Any] = [
         bench_root / "deepresearch_bench_race.py",
         model_name,
@@ -135,12 +143,54 @@ def _race(
 
     log = run_script(args, cwd=bench_root, env=env, timeout_s=timeout_s)
     result_file = out_dir / "race_result.txt"
-    return {
+    raw_results = out_dir / "raw_results.jsonl"
+    out: dict[str, Any] = {
         "scores": parse_key_value_report(result_file),
         "path": str(result_file),
-        "raw_results": str(out_dir / "raw_results.jsonl"),
+        "raw_results": str(raw_results),
         "log": log,
     }
+    # Per-query scores are the per-trajectory quality term Q(y, q) for PILOT
+    # rewards. The upstream file lives under results/race/<model_name>/ and is
+    # overwritten by the next evaluation with the same model name, so copy it
+    # into the run directory and surface the mapping in the summary.
+    per_query = read_race_raw_results(raw_results)
+    if per_query:
+        out["per_query"] = per_query
+    if run_dir is not None and raw_results.exists():
+        dest = Path(run_dir) / "metrics" / "race_raw_results.jsonl"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(raw_results.read_text(encoding="utf-8"), encoding="utf-8")
+        out["raw_results_copy"] = str(dest)
+    return out
+
+
+def read_race_raw_results(path: Path) -> dict[str, dict[str, float]]:
+    """``{query_id: {overall_score, comprehensiveness, insight, instruction_following, readability}}``
+    from RACE's ``raw_results.jsonl``. Rows carrying an ``error`` are skipped."""
+    import json
+
+    path = Path(path)
+    if not path.exists():
+        return {}
+    rows: dict[str, dict[str, float]] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(row, dict) or row.get("error") or "overall_score" not in row:
+            continue
+        qid = str(row.get("id"))
+        rows[qid] = {
+            k: float(row[k])
+            for k in ("overall_score", "comprehensiveness", "insight", "instruction_following", "readability")
+            if k in row and isinstance(row[k], (int, float))
+        }
+    return rows
 
 
 def _fact(
@@ -152,7 +202,10 @@ def _fact(
     env: dict[str, str],
     timeout_s: float | None,
 ) -> dict[str, Any]:
-    if not (os.environ.get(SCRAPE_KEY) or env.get(SCRAPE_KEY)):
+    public = (env.get("JINA_READER") or os.environ.get("JINA_READER") or "").lower() in {
+        "public", "anon", "anonymous",
+    }
+    if not public and not (os.environ.get(SCRAPE_KEY) or env.get(SCRAPE_KEY)):
         return {
             "skipped": True,
             "reason": f"{SCRAPE_KEY} is not set; FACT scrapes cited pages through Jina",

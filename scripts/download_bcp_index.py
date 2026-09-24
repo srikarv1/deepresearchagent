@@ -2,15 +2,17 @@
 """Download BrowseComp-Plus indexes from Tevatron/browsecomp-plus-indexes.
 
 ``bm25/`` (~2.1 GB) is the Lucene index that stores document text. The dense
-``qwen3-embedding-0.6b/`` shards (~0.41 GB) are official corpus vectors for
-the Qwen3-Embedding-0.6B row. Query encoding is *not* downloaded: serve those
-with Ollama (``ollama pull qwen3-embedding:0.6b``).
+``qwen3-embedding-8b/`` shards (~1.64 GB) are official corpus vectors for the
+Qwen3-Embedding-8B paper row. ``qwen3-embedding-0.6b/`` (~0.41 GB) is the
+smaller ablation. Query encoding is *not* downloaded: serve those with Ollama
+(``ollama pull qwen3-embedding:8b``).
 
 Files that already exist with the right size are skipped, so re-running after
 an interrupted download only fetches what is missing.
 
     python scripts/download_bcp_index.py                  # BM25 (default)
-    python scripts/download_bcp_index.py --kind dense     # 0.6B shards
+    python scripts/download_bcp_index.py --kind dense     # 8B shards (paper row)
+    python scripts/download_bcp_index.py --kind dense --dense-model qwen3-embedding-0.6b
     python scripts/download_bcp_index.py --kind all
     python scripts/download_bcp_index.py --dest /data/bcp/bm25   # then set ADR_BCP_INDEX
 """
@@ -29,7 +31,7 @@ REPO = "Tevatron/browsecomp-plus-indexes"
 REVISION = "b3f37f70c33829eb09d04784a54277a31871fd63"
 INDEX_ROOT = Path(__file__).resolve().parents[1] / "third_party" / "bcp_indexes"
 DEFAULT_BM25 = INDEX_ROOT / "bm25"
-DEFAULT_DENSE_MODEL = "qwen3-embedding-0.6b"
+DEFAULT_DENSE_MODEL = "qwen3-embedding-8b"
 CHUNK = 8 * 1024 * 1024
 
 

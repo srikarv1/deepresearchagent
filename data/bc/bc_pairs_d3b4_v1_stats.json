@@ -1,0 +1,29 @@
+{
+  "n_run_dirs": 170,
+  "n_loaded": 170,
+  "n_dropped": {
+    "no_report": 1,
+    "no_quality_score": 1
+  },
+  "n_selected": 52,
+  "n_rows": 113,
+  "n_queries": 17,
+  "reward_min": -0.03579004435061034,
+  "reward_max": 0.6990353233483997,
+  "reward_cut": 0.6411393687935781,
+  "policies": {
+    "random": 168
+  },
+  "reward_config": {
+    "alpha_q": 1.0,
+    "alpha_g": 0.0,
+    "lambda_tok": 0.1,
+    "lambda_lat": 0.1,
+    "q_min": 0.44,
+    "gamma": 1.0,
+    "shaping": true,
+    "shaping_weight": 1.0,
+    "token_budget": null,
+    "latency_budget_s": null
+  }
+}

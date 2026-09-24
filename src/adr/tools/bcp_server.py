@@ -14,7 +14,7 @@ Routes (all GET):
   /health                   retriever, index path, document count
 
 ``adr serve-retriever`` is BM25. ``adr serve-retriever --retriever dense``
-ranks with official Qwen3-Embedding-0.6B shards and encodes queries through
+ranks with official Qwen3-Embedding-8B shards and encodes queries through
 Ollama; Lucene still supplies ``raw_content``. Point the agent at the same
 endpoint either way::
 
