@@ -123,6 +123,8 @@ async def _retry_parse(**kwargs):\
     sed -i.bak 's|await client\.beta\.chat\.completions\.parse(|await _retry_parse(|g' "$f" && rm -f "$f.bak"
     # _retry_parse itself must call the original client method, not itself.
     sed -i.bak 's|return await _retry_parse(\*\*kwargs)|return await client.beta.chat.completions.parse(**kwargs)|g' "$f" && rm -f "$f.bak"
+    # Lower concurrency to avoid saturating the rate limit.
+    sed -i.bak 's|Semaphore(100)|Semaphore(5)|g' "$f" && rm -f "$f.bak"
     patched=$((patched + 1))
   done
 
