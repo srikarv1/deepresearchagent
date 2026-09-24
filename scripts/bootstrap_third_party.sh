@@ -61,6 +61,32 @@ link_or_clone "$DEST/deep_research_bench" "deepresearch_bench_race.py" "$DRB_REP
 link_or_clone "$DEST/deepresearchgym" "eval_quality_async.py" "$GYM_REPO_URL" \
   "${ADR_GYM_DIR:-}" "$PARENT/deepresearchgym" "$PARENT/deepresearch_benchmarking"
 
+# Patch Gym judges: gpt-5-mini does not support temperature=0.
+_patch_gym_temperature() {
+  local gym="$DEST/deepresearchgym"
+  local pattern='temperature=0'
+  local replacement='**({"temperature": 0} if model not in ("gpt-5-mini",) else {})'
+  local patched=0
+  for f in \
+    "$gym/eval_quality_async.py" \
+    "$gym/eval_kpr_async.py" \
+    "$gym/eval_citation_async.py" \
+    "$gym/eval_citation_recall_async.py" \
+    "$gym/eval_citation_clueweb_async.py" \
+    "$gym/key_point/aggregate.py" \
+    "$gym/key_point/key_point_extract.py"; do
+    [[ -f "$f" ]] || continue
+    if grep -q "$pattern" "$f" 2>/dev/null; then
+      sed -i.bak "s|$pattern|$replacement|g" "$f" && rm -f "$f.bak"
+      patched=$((patched + 1))
+    fi
+  done
+  if [[ $patched -gt 0 ]]; then
+    echo "PATCHED  ${patched} Gym judge files (temperature=0 guard for gpt-5-mini)"
+  fi
+}
+_patch_gym_temperature
+
 # Agent under test, not a judge. Marker is the fork's trajectory logger so a
 # plain upstream checkout is not mistaken for the instrumented one.
 link_or_clone "$DEST/gpt-researcher" "gpt_researcher/utils/trajectory_logger.py" "$GR_REPO_URL" \
