@@ -145,6 +145,7 @@ echo "Judge dependencies (install into the same env that runs adr):"
 echo "  pip install -r $DEST/deep_research_bench/requirements.txt   # google-genai for RACE/FACT"
 echo "  pip install openai crawl4ai                                 # Gym judges (+ citation)"
 echo "  pip install -e $DEST/gpt-researcher                          # gpt_researcher agent"
+echo "  pip install typesafe-sdk                                    # GR_ORCHESTRATOR=typesafe row"
 echo
 echo "BrowseComp-Plus corpus retriever (optional, 2.1 GB index + pyserini/Java 21):"
 echo "  pip install -e '.[bcp]' && python $ROOT/scripts/download_bcp_index.py"
