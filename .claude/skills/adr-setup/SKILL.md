@@ -180,6 +180,22 @@ done
 
 The gpt-researcher fork must write a short `Exact Answer:` (set `GR_ANSWER_FORMAT=browsecomp` in `configs/agents/gpt_researcher_browsecomp_plus.yaml`; needs the `srikar/browsecomp-plus-short-answer` branch or a merge of it). A 2000-word research report is scored wrong even when the fact is in the text. Both that PR and the orchestration PR must be on the installed fork to fill the table.
 
+### TypeSafe (Jev) orchestration row
+
+`GR_ORCHESTRATOR=typesafe` runs the runtime orchestrator on TypeSafe's System One model instead of the backbone LLM (fork branch `feat/typesafe-orchestrator`, plus `pip install typesafe-sdk` in the env that runs `adr`). Set the key and the shared budget; every threshold has a default:
+
+```bash
+export TYPESAFE_API_KEY=...                # console.typesafe.ai/keys
+export GR_ORCHESTRATOR=typesafe
+export GR_CONTEXT_BUDGET_TOKENS=50000
+# optional (defaults shown): GR_TYPESAFE_MODEL=jev-1.13.0 GR_TYPESAFE_KEEP_MIN=0.5
+#   GR_TYPESAFE_BOILERPLATE_MAX=0.7 GR_TYPESAFE_STOP_MIN=0.75 GR_TYPESAFE_MIN_ROUNDS=2
+#   GR_TYPESAFE_SUPPORT_K=3 GR_TYPESAFE_BATCH=20 GR_TYPESAFE_SNIPPET_CHARS=600
+adr run -c configs/gpt_researcher_gym.yaml --run-name gym-typesafe
+```
+
+Each round's `decision.meta` in the trajectory records every item's verdict (`useful`, `boilerplate`, `support` per sub-question), the prune reason per item, the per-sub-question answered probabilities that drive termination, the branch probabilities behind the allocation, and the request / token / USD usage. The orchestrator's tokens are also metered under `usage_tag=orchestrator`, like the prompted row, so the Tokens column stays comparable.
+
 Inspect BrowseComp-Plus queries
 
 ```bash
