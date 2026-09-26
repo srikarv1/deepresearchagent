@@ -24,7 +24,7 @@ search:
   #   python scripts/download_bcp_index.py --kind dense --dense-model qwen3-embedding-8b
   #   adr serve-retriever --retriever dense
   # Orchestration rows (fork srikar/orchestration-policies):
-  #   GR_ORCHESTRATOR=none|topk|extractive|llmlingua|prompted \
+  #   GR_ORCHESTRATOR=none|topk|extractive|llmlingua|prompted|greedy|heuristic_stop \
   #     adr run -c configs/gpt_researcher_browsecomp_plus_dense.yaml \
   #     --run-name bcp-dense-$GR_ORCHESTRATOR
   backend: browsecomp_plus

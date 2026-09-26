@@ -99,7 +99,23 @@ export EMBEDDING="openai:text-embedding-3-small"
 Only works if the gpt-researcher fork was bootstrapped on a branch with orchestration support.
 
 ```bash
-export GR_ORCHESTRATOR="topk"            # none | topk | extractive | llmlingua | prompted
+export GR_ORCHESTRATOR="topk"            # none | topk | extractive | llmlingua | prompted | greedy | heuristic_stop
+export GR_CONTEXT_BUDGET_TOKENS=50000    # retained-evidence budget per round (topk / extractive / llmlingua / greedy)
+
+Knobs for the two coverage-based rows (all optional; defaults in parentheses):
+
+```bash
+# greedy: stop adding once the best marginal value < eps (0.0); novelty exponent (1.0, 0 disables)
+export GR_GREEDY_MIN_GAIN=0.0
+export GR_GREEDY_LAMBDA=1.0
+# heuristic_stop: terminate once g_t = Phi(K_t) - Phi(K_{t-1}) < threshold (0.01)
+# for GR_STOP_PATIENCE consecutive rounds (1), evaluated from round GR_STOP_MIN_ROUNDS (2).
+# Rounds are depth-first per node, so sweep patience together with the threshold.
+export GR_STOP_GAIN_THRESHOLD=0.01
+export GR_STOP_MIN_ROUNDS=2
+export GR_STOP_PATIENCE=1
+export GR_STOP_RETAIN=filter             # filter = EmbeddingsFilter verdict (legacy retention) | all
+```
 ```
 
 ### Pre-run checklist
@@ -154,7 +170,7 @@ Paper table rows are one frozen agent × `GR_ORCHESTRATOR` (needs the fork orche
 
 ```bash
 # terminal 1 stays on --retriever dense
-for pol in none topk extractive llmlingua prompted; do
+for pol in none topk extractive llmlingua prompted greedy heuristic_stop; do
   GR_ORCHESTRATOR=$pol adr run \
     --config configs/gpt_researcher_browsecomp_plus_dense.yaml \
     --run-name "bcp-dense-${pol}"

@@ -32,3 +32,14 @@ env:
   SMART_LLM: "openai:gpt-5-mini"
   FAST_LLM: "openai:gpt-5-mini"
   EMBEDDING: "openai:text-embedding-3-small"
+  # Table-2 orchestration rows. Usually set in the shell per run
+  # (GR_ORCHESTRATOR=greedy adr run -c configs/gpt_researcher_gym.yaml ...);
+  # values here take precedence over the shell.
+  # GR_ORCHESTRATOR: greedy            # none|topk|extractive|llmlingua|prompted|greedy|heuristic_stop
+  # GR_CONTEXT_BUDGET_TOKENS: "50000"
+  # GR_GREEDY_MIN_GAIN: "0.0"
+  # GR_GREEDY_LAMBDA: "1.0"
+  # GR_STOP_GAIN_THRESHOLD: "0.01"
+  # GR_STOP_MIN_ROUNDS: "2"
+  # GR_STOP_PATIENCE: "1"
+  # GR_STOP_RETAIN: filter
