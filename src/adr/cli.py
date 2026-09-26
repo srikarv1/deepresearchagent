@@ -433,7 +433,9 @@ def doctor_cmd() -> None:
         "[green]yes[/green]" if has_numpy else "[yellow]no[/yellow]",
         "" if has_numpy else r"pip install -e '.\[bcp]'",
     )
-    ollama_host = os.environ.get("OLLAMA_HOST") or "http://127.0.0.1:11434"
+    from adr.tools.bcp_dense import normalize_ollama_url
+
+    ollama_host = normalize_ollama_url(os.environ.get("OLLAMA_HOST"))
     table.add_row(
         "Ollama (dense query encoder)",
         "[green]up[/green]" if _ollama_reachable(ollama_host) else "[yellow]down[/yellow]",
