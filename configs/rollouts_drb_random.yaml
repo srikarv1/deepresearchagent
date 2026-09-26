@@ -21,7 +21,7 @@ dataset:
 
 agent:
   name: gpt_researcher
-  config: configs/agents/gpt_researcher.yaml
+  config: configs/agents/gpt_researcher_bench.yaml
 
 llm:
   provider: mock

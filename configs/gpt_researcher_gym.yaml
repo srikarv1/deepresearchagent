@@ -10,6 +10,9 @@ dataset:
   limit: 10
   query_ids: []
 
+# Agent parameters (depth/breadth, models, Gym corpus, `orchestration:`) are in
+# the agent YAML; GR_ORCHESTRATOR=<policy> selects the orchestration row for one
+# command, scripts/sweep_gym.sh runs every row.
 agent:
   name: gpt_researcher
   config: configs/agents/gpt_researcher_gym.yaml

@@ -16,6 +16,9 @@ dataset:
   limit: 10
   query_ids: []
 
+# Agent parameters (depth/breadth, retriever endpoint, answer format,
+# `orchestration:`) are in the agent YAML; GR_ORCHESTRATOR=<policy> selects the
+# orchestration row for one command.
 agent:
   name: gpt_researcher
   config: configs/agents/gpt_researcher_browsecomp_plus.yaml

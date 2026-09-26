@@ -9,6 +9,8 @@ and the process-global ``TokenTracker`` / ``LatencyTracker``.
 from __future__ import annotations
 
 import json
+import logging
+import os
 import sys
 import types
 from dataclasses import dataclass, field
@@ -446,3 +448,108 @@ def test_legacy_fallback_prompt_is_official_query_template():
 
     assert _LEGACY_BROWSECOMP_PROMPT == QUERY_TEMPLATE_NO_GET_DOCUMENT
     assert "You have completed research" not in _LEGACY_BROWSECOMP_PROMPT
+
+
+# ── orchestration: section -> GR_* variables ──────────────────────────
+
+from adr.agents.gpt_researcher import _ORCH_ENV_MAP as _ORCH_MAP_FOR_TESTS  # noqa: E402
+
+_ORCH_NAMES = sorted(set(_ORCH_MAP_FOR_TESTS.values()))
+
+
+def test_orchestration_env_maps_nested_keys_and_skips_null():
+    from adr.agents.gpt_researcher import orchestration_env
+
+    env = orchestration_env(
+        {
+            "policy": "greedy",
+            "context_budget_tokens": 50000,
+            "feature_tau": None,
+            "greedy": {"min_gain": 0.0, "lambda": 1.0},
+            "heuristic_stop": {"patience": 2, "retain": "filter", "gain_threshold": None},
+            "random": {"seed": 17, "params": {"keep_ratio": 0.4, "stop": "phi"}},
+            "typesafe": {"model": "jev-1.13.0", "keep_min": 0.5},
+        }
+    )
+    assert env == {
+        "GR_ORCHESTRATOR": "greedy",
+        "GR_CONTEXT_BUDGET_TOKENS": "50000",
+        "GR_GREEDY_MIN_GAIN": "0.0",
+        "GR_GREEDY_LAMBDA": "1.0",
+        "GR_STOP_PATIENCE": "2",
+        "GR_STOP_RETAIN": "filter",
+        "GR_ORCH_SEED": "17",
+        "GR_RANDOM_PARAMS": '{"keep_ratio": 0.4, "stop": "phi"}',
+        "GR_TYPESAFE_MODEL": "jev-1.13.0",
+        "GR_TYPESAFE_KEEP_MIN": "0.5",
+    }
+    assert orchestration_env(None) == {} and orchestration_env({}) == {}
+
+
+def test_orchestration_env_rejects_unknown_keys():
+    from adr.agents.gpt_researcher import orchestration_env
+
+    with pytest.raises(ValueError, match="unknown key 'greedy.lamda'"):
+        orchestration_env({"greedy": {"lamda": 1.0}})
+    with pytest.raises(ValueError, match="must be a mapping"):
+        orchestration_env(["policy"])  # type: ignore[arg-type]
+
+
+def test_shipped_agent_configs_validate_against_the_mapping():
+    """Every gpt_researcher agent YAML in configs/ must flatten cleanly, so a
+    typo in a checked-in config fails here rather than at run time."""
+    import yaml
+    from adr.agents.gpt_researcher import orchestration_env
+
+    paths = sorted(Path("configs/agents").glob("gpt_researcher*.yaml"))
+    assert paths, "no gpt_researcher agent configs found"
+    for path in paths:
+        cfg = yaml.safe_load(path.read_text(encoding="utf-8"))
+        env = orchestration_env(cfg.get("orchestration"))
+        assert env["GR_ORCHESTRATOR"] == "legacy", path
+        assert env["GR_CONTEXT_BUDGET_TOKENS"] == "50000", path
+        assert "GR_FEAT_TAU" not in env, f"{path}: feature_tau should stay null"
+
+
+def test_prepare_import_exports_yaml_defaults_and_lets_explicit_env_win(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+):
+    from adr.agents.gpt_researcher import GPTResearcherAgent
+
+    for name in _ORCH_NAMES:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("GR_ORCHESTRATOR", "heuristic_stop")  # row selected by sweep_gym.sh
+    monkeypatch.setenv("GR_STOP_PATIENCE", "")  # empty counts as unset
+    monkeypatch.setenv("GR_GREEDY_MIN_GAIN", "0.1")  # a knob overridden from the shell
+    monkeypatch.setattr(sys, "path", list(sys.path))
+
+    agent = GPTResearcherAgent(
+        {
+            "repo_path": None,
+            "orchestration": {
+                "policy": "greedy",
+                "context_budget_tokens": 50000,
+                "greedy": {"min_gain": 0.0, "lambda": 0.5},
+                "heuristic_stop": {"patience": 2},
+            },
+            "env": {"GR_GREEDY_LAMBDA": "0.25"},
+        }
+    )
+    with caplog.at_level(logging.INFO, logger="adr.agents.gpt_researcher"):
+        agent._prepare_import()
+
+    assert os.environ["GR_ORCHESTRATOR"] == "heuristic_stop"  # explicit env won
+    assert os.environ["GR_CONTEXT_BUDGET_TOKENS"] == "50000"  # YAML default exported
+    assert os.environ["GR_STOP_PATIENCE"] == "2"  # empty env value did not block the default
+    assert os.environ["GR_GREEDY_MIN_GAIN"] == "0.1"  # explicit knob override won
+    assert os.environ["GR_GREEDY_LAMBDA"] == "0.25"  # the raw env block always wins
+    by_msg = {r.message: r.levelno for r in caplog.records}
+    assert by_msg[
+        "orchestration: GR_ORCHESTRATOR=heuristic_stop from the environment overrides greedy from the agent config"
+    ] == logging.INFO
+    assert by_msg[
+        "orchestration: GR_GREEDY_MIN_GAIN=0.1 from the environment overrides 0.0 from the agent config"
+    ] == logging.WARNING
+    assert agent._orchestration_effective["GR_ORCHESTRATOR"] == "heuristic_stop"
+    assert agent._orchestration_effective["GR_GREEDY_LAMBDA"] == "0.25"
+    assert "GR_FEAT_TAU" not in agent._orchestration_effective

@@ -19,6 +19,83 @@ max_search_results_per_query: 5
 max_scraper_workers: 4
 trajectory_dir: runs/_gpt_researcher_raw
 keep_trajectory_files: true
+# ── Orchestration policy (fork: gpt_researcher/orchestration) ─────────────────
+# Each key maps to one GR_* variable of the fork (src/adr/agents/gpt_researcher.py,
+# _ORCH_ENV_MAP). A GR_* already set in the environment overrides the value
+# here (logged); null leaves the variable unset (fork default). The effective
+# values are written to final_stats["orchestration"] of every trajectory.
+orchestration:
+  # GR_ORCHESTRATOR: legacy (per-sub-query EmbeddingsFilter only, nothing
+  # re-decided) | none (keep everything) | topk (cosine to the root query under
+  # the budget) | extractive (per-item chunk selection) | llmlingua (LLMLingua-2
+  # compression) | prompted (one backbone-LLM call per round) | greedy (marginal
+  # sub-question coverage x novelty under the budget) | heuristic_stop (default
+  # retention; terminate when the coverage gain stays low) | random (sampled
+  # orchestration for rollouts) | typesafe (TypeSafe Jev judges each item).
+  policy: legacy
+  # GR_CONTEXT_BUDGET_TOKENS: retained-evidence budget per round, approximate
+  # tokens (len(text) // 4). Binds topk / extractive / llmlingua / greedy /
+  # typesafe / random; shown to prompted. null = no budget.
+  context_budget_tokens: 50000
+  # GR_FEAT_TAU: near-duplicate cosine threshold of the per-item features and
+  # of the greedy / typesafe dedup (fork default 0.85).
+  feature_tau: null
+  # GR_FEAT_TAU_C: sub-question coverage cosine threshold of the per-item
+  # features (fork default 0.5).
+  feature_tau_c: null
+  topk:
+    # GR_TOPK_K: keep exactly k items instead of filling the token budget.
+    k: null
+  compression:
+    # GR_COMPRESSION_RATE: fraction of each item kept by extractive / llmlingua
+    # when no budget binds (fork default 0.5).
+    rate: null
+    # GR_LLMLINGUA_MODEL: Hugging Face id of the LLMLingua-2 compressor.
+    llmlingua_model: null
+  greedy:
+    # GR_GREEDY_MIN_GAIN: stop adding items once the best marginal value is
+    # below this; 0.0 = only the budget binds.
+    min_gain: 0.0
+    # GR_GREEDY_LAMBDA: exponent on the novelty discount; 0 disables it.
+    lambda: 1.0
+  heuristic_stop:
+    # GR_STOP_GAIN_THRESHOLD: coverage gain g_t = Phi(K_t) - Phi(K_{t-1}) below
+    # which a round counts as low-gain.
+    gain_threshold: 0.01
+    # GR_STOP_PATIENCE: consecutive low-gain rounds before terminating.
+    patience: 2
+    # GR_STOP_MIN_ROUNDS: first round at which the stop rule is evaluated.
+    min_rounds: 2
+    # GR_STOP_RETAIN: filter (per-sub-query EmbeddingsFilter verdict) | all.
+    retain: filter
+  random:
+    # GR_ORCH_SEED: seed of the sampled orchestration parameters.
+    seed: null
+    # GR_RANDOM_PARAMS: fixed orchestration parameters (mapping, sent as JSON).
+    params: null
+  typesafe:
+    # GR_TYPESAFE_MODEL: TypeSafe model id or alias.
+    model: jev-1.13.0
+    # GR_TYPESAFE_KEEP_MIN: p(useful) below which an item is pruned.
+    keep_min: 0.5
+    # GR_TYPESAFE_BOILERPLATE_MAX: p(boilerplate) at or above which an item is
+    # pruned.
+    boilerplate_max: 0.7
+    # GR_TYPESAFE_STOP_MIN: terminate once every sub-question is answered with
+    # p >= this.
+    stop_min: 0.75
+    # GR_TYPESAFE_MIN_ROUNDS: first round at which termination is considered.
+    min_rounds: 2
+    # GR_TYPESAFE_SUPPORT_K: passages per sub-question / branch in the stop
+    # request.
+    support_k: 3
+    # GR_TYPESAFE_BATCH: evidence items per judging request.
+    batch: 20
+    # GR_TYPESAFE_SNIPPET_CHARS: characters of each passage sent to the model.
+    snippet_chars: 600
+
+# Extra env vars set before import (applied after `orchestration:` and over
+# the shell).
 env:
   RETRIEVER_ENDPOINT: "http://127.0.0.1:8321/search"
   RETRIEVER_ARG_K: "5"

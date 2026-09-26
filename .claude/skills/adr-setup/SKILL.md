@@ -80,12 +80,11 @@ export JINA_API_KEY="jina_..."           # DRB FACT judge scraping
 export LLM_BACKEND=openai
 export RACE_MODEL=gpt-5-mini
 export FACT_MODEL=gpt-5-mini
-export GR_CONTEXT_BUDGET_TOKENS=50000
 ```
 
 ### Model overrides for gpt-researcher
 
-Defaults are in `configs/agents/gpt_researcher.yaml` under `env:`. Override via environment:
+Defaults are in the dataset's agent YAML (`configs/agents/gpt_researcher_{bench,gym,browsecomp_plus}.yaml`) under `env:`. Override via environment:
 
 ```bash
 export STRATEGIC_LLM="openai:gpt-5-mini"
@@ -98,24 +97,16 @@ export EMBEDDING="openai:text-embedding-3-small"
 
 Only works if the gpt-researcher fork was bootstrapped on a branch with orchestration support.
 
-```bash
-export GR_ORCHESTRATOR="topk"            # none | topk | extractive | llmlingua | prompted | greedy | heuristic_stop
-export GR_CONTEXT_BUDGET_TOKENS=50000    # retained-evidence budget per round (topk / extractive / llmlingua / greedy)
+The policy and every knob live in the agent YAML, one per dataset, under `orchestration:` with a comment per parameter (each maps to one `GR_*` variable of the fork):
 
-Knobs for the two coverage-based rows (all optional; defaults in parentheses):
+- DeepResearchGym: `configs/agents/gpt_researcher_gym.yaml`
+- DeepResearch Bench: `configs/agents/gpt_researcher_bench.yaml` (depth 3 / breadth 4, also used by `adr rollouts`)
+- BrowseComp-Plus: `configs/agents/gpt_researcher_browsecomp_plus.yaml`
+
+`policy: legacy` is the checked-in default (the pre-existing pipeline). To run one Table-2 row without editing the file, set `GR_ORCHESTRATOR` for that command; an explicit `GR_*` in the environment overrides the YAML value (logged at INFO for the policy, WARNING for any other knob) and the effective values are written to `final_stats["orchestration"]` of every trajectory:
 
 ```bash
-# greedy: stop adding once the best marginal value < eps (0.0); novelty exponent (1.0, 0 disables)
-export GR_GREEDY_MIN_GAIN=0.0
-export GR_GREEDY_LAMBDA=1.0
-# heuristic_stop: terminate once g_t = Phi(K_t) - Phi(K_{t-1}) < threshold (0.01)
-# for GR_STOP_PATIENCE consecutive rounds (1), evaluated from round GR_STOP_MIN_ROUNDS (2).
-# Rounds are depth-first per node, so sweep patience together with the threshold.
-export GR_STOP_GAIN_THRESHOLD=0.01
-export GR_STOP_MIN_ROUNDS=2
-export GR_STOP_PATIENCE=1
-export GR_STOP_RETAIN=filter             # filter = EmbeddingsFilter verdict (legacy retention) | all
-```
+GR_ORCHESTRATOR=greedy adr run -c configs/gpt_researcher_gym.yaml --run-name gym-greedy
 ```
 
 ### Pre-run checklist
@@ -182,16 +173,11 @@ The gpt-researcher fork must write a short `Exact Answer:` (set `GR_ANSWER_FORMA
 
 ### TypeSafe (Jev) orchestration row
 
-`GR_ORCHESTRATOR=typesafe` runs the runtime orchestrator on TypeSafe's System One model instead of the backbone LLM (fork branch `feat/typesafe-orchestrator`, plus `pip install typesafe-sdk` in the env that runs `adr`). Set the key and the shared budget; every threshold has a default:
+`policy: typesafe` runs the runtime orchestrator on TypeSafe's System One model instead of the backbone LLM (fork main since #10, plus `pip install typesafe-sdk` in the env that runs `adr`). The only environment setting is the credential; the model and thresholds are `orchestration.typesafe` in the agent YAML:
 
 ```bash
-export TYPESAFE_API_KEY=...                # console.typesafe.ai/keys
-export GR_ORCHESTRATOR=typesafe
-export GR_CONTEXT_BUDGET_TOKENS=50000
-# optional (defaults shown): GR_TYPESAFE_MODEL=jev-1.13.0 GR_TYPESAFE_KEEP_MIN=0.5
-#   GR_TYPESAFE_BOILERPLATE_MAX=0.7 GR_TYPESAFE_STOP_MIN=0.75 GR_TYPESAFE_MIN_ROUNDS=2
-#   GR_TYPESAFE_SUPPORT_K=3 GR_TYPESAFE_BATCH=20 GR_TYPESAFE_SNIPPET_CHARS=600
-adr run -c configs/gpt_researcher_gym.yaml --run-name gym-typesafe
+export TYPESAFE_API_KEY=...                # console.typesafe.ai/keys (in .env)
+GR_ORCHESTRATOR=typesafe adr run -c configs/gpt_researcher_gym.yaml --run-name gym-typesafe
 ```
 
 Each round's `decision.meta` in the trajectory records every item's verdict (`useful`, `boilerplate`, `support` per sub-question), the prune reason per item, the per-sub-question answered probabilities that drive termination, the branch probabilities behind the allocation, and the request / token / USD usage. The orchestrator's tokens are also metered under `usage_tag=orchestrator`, like the prompted row, so the Tokens column stays comparable.

@@ -11,7 +11,7 @@ estimates) and written into the harness ``CostMeter`` so local metrics work.
 ``final_stats.cost_source`` records this so it is not mistaken for
 harness-metered numbers.
 
-Config keys (configs/agents/gpt_researcher.yaml):
+Config keys (configs/agents/gpt_researcher_{bench,gym,browsecomp_plus}.yaml, one per dataset):
 
   repo_path        path to the fork; if null, resolved via ADR_GR_DIR,
                    third_party/gpt-researcher, or a sibling clone
@@ -24,7 +24,15 @@ Config keys (configs/agents/gpt_researcher.yaml):
                    BrowseComp-Plus, whose bcp:// hits are collected into
                    final_stats["retrieved_docids"]
   max_search_results_per_query
-  env              extra env vars to set before import (dict)
+  orchestration    the fork's orchestration policy and its knobs as typed
+                   YAML (see _ORCH_ENV_MAP for the GR_* variable behind each
+                   key). These are the run's defaults: an explicit GR_*
+                   variable already in the environment wins, which is how
+                   scripts/sweep_gym.sh and `adr rollouts` vary the policy
+                   without editing the file; every such override is logged
+                   and the effective values land in final_stats["orchestration"]
+  env              extra env vars to set before import (dict); always applied,
+                   so a GR_* here overrides both the shell and `orchestration`
   trajectory_dir   where gpt-researcher writes trajectory_*.json / _emb.npz
   keep_trajectory_files  copy gpt-researcher's files into the run dir
 """
@@ -32,6 +40,8 @@ Config keys (configs/agents/gpt_researcher.yaml):
 from __future__ import annotations
 
 import importlib
+import json
+import logging
 import os
 import re
 import shutil
@@ -68,6 +78,79 @@ _ENV_MAP = {
     "max_scraper_workers": "MAX_SCRAPER_WORKERS",
 }
 
+_log = logging.getLogger(__name__)
+
+# `orchestration:` section of the agent config -> the fork's GR_* variables
+# (gpt_researcher/orchestration/policies.py, features.py, typesafe.py).
+# Dotted keys are nested mappings in the YAML.
+_ORCH_ENV_MAP = {
+    "policy": "GR_ORCHESTRATOR",
+    "context_budget_tokens": "GR_CONTEXT_BUDGET_TOKENS",
+    "feature_tau": "GR_FEAT_TAU",
+    "feature_tau_c": "GR_FEAT_TAU_C",
+    "topk.k": "GR_TOPK_K",
+    "compression.rate": "GR_COMPRESSION_RATE",
+    "compression.llmlingua_model": "GR_LLMLINGUA_MODEL",
+    "greedy.min_gain": "GR_GREEDY_MIN_GAIN",
+    "greedy.lambda": "GR_GREEDY_LAMBDA",
+    "heuristic_stop.gain_threshold": "GR_STOP_GAIN_THRESHOLD",
+    "heuristic_stop.min_rounds": "GR_STOP_MIN_ROUNDS",
+    "heuristic_stop.patience": "GR_STOP_PATIENCE",
+    "heuristic_stop.retain": "GR_STOP_RETAIN",
+    "random.seed": "GR_ORCH_SEED",
+    "random.params": "GR_RANDOM_PARAMS",
+    "typesafe.model": "GR_TYPESAFE_MODEL",
+    "typesafe.keep_min": "GR_TYPESAFE_KEEP_MIN",
+    "typesafe.boilerplate_max": "GR_TYPESAFE_BOILERPLATE_MAX",
+    "typesafe.stop_min": "GR_TYPESAFE_STOP_MIN",
+    "typesafe.min_rounds": "GR_TYPESAFE_MIN_ROUNDS",
+    "typesafe.support_k": "GR_TYPESAFE_SUPPORT_K",
+    "typesafe.batch": "GR_TYPESAFE_BATCH",
+    "typesafe.snippet_chars": "GR_TYPESAFE_SNIPPET_CHARS",
+}
+
+
+def orchestration_env(section: dict | None) -> dict[str, str]:
+    """Flatten an ``orchestration:`` mapping into GR_* variable values.
+
+    ``None`` values are skipped (the fork default applies), mappings such as
+    ``random.params`` become JSON, everything else is rendered with ``str``
+    so YAML numbers keep their spelling. Unknown keys raise so a typo in a
+    config fails the run instead of silently running the default policy.
+    """
+    out: dict[str, str] = {}
+    if not section:
+        return out
+    if not isinstance(section, dict):
+        raise ValueError(f"orchestration must be a mapping, got {type(section).__name__}")
+    for key, value in _flatten(section):
+        env_name = _ORCH_ENV_MAP.get(key)
+        if env_name is None:
+            known = ", ".join(sorted(_ORCH_ENV_MAP))
+            raise ValueError(f"orchestration: unknown key {key!r}; known keys: {known}")
+        if value is None:
+            continue
+        if isinstance(value, dict):
+            out[env_name] = json.dumps(value, sort_keys=True)
+        elif isinstance(value, bool):
+            out[env_name] = "true" if value else "false"
+        else:
+            out[env_name] = str(value)
+    return out
+
+
+def _flatten(section: dict, prefix: str = "") -> list[tuple[str, Any]]:
+    items: list[tuple[str, Any]] = []
+    for key, value in section.items():
+        dotted = f"{prefix}{key}"
+        # random.params is itself a mapping (the sampled parameter vector); every
+        # other nested mapping is a policy group to descend into.
+        if isinstance(value, dict) and dotted not in _ORCH_ENV_MAP:
+            items.extend(_flatten(value, f"{dotted}."))
+        else:
+            items.append((dotted, value))
+    return items
+
 # Used only if the fork's write_report does not yet accept answer_format.
 # Official openai_client.py default template; older generate_report then
 # appends "Context: {context}" after this custom_prompt.
@@ -80,6 +163,8 @@ class GPTResearcherAgent:
     def __init__(self, config: dict | None = None) -> None:
         self.config = config or {}
         self._imported = False
+        # GR_* name -> effective value after YAML defaults and env overrides.
+        self._orchestration_effective: dict[str, str] = {}
 
     # ── import / env ──────────────────────────────────────────────
     def _prepare_import(self) -> None:
@@ -97,12 +182,42 @@ class GPTResearcherAgent:
         for key, env_name in _ENV_MAP.items():
             if key in self.config and self.config[key] is not None:
                 os.environ[env_name] = str(self.config[key])
+        self._apply_orchestration()
         for k, v in (self.config.get("env") or {}).items():
             os.environ[str(k)] = str(v)
+        # Snapshot after the raw env block so final_stats reports what the
+        # fork will actually read.
+        self._orchestration_effective = {
+            env_name: os.environ[env_name]
+            for env_name in sorted(_ORCH_ENV_MAP.values())
+            if os.environ.get(env_name, "").strip()
+        }
         traj_dir = self.config.get("trajectory_dir")
         if traj_dir:
             os.environ["TRAJECTORY_OUTPUT_DIR"] = str(Path(traj_dir).expanduser().resolve())
         self._imported = True
+
+    def _apply_orchestration(self) -> None:
+        """Export the ``orchestration:`` section as GR_* defaults. A variable
+        already set (non-empty) in the environment wins and is logged."""
+        wanted = orchestration_env(self.config.get("orchestration"))
+        overridden: dict[str, tuple[str, str]] = {}
+        for env_name, value in wanted.items():
+            current = os.environ.get(env_name, "")
+            if current.strip():
+                if current != value:
+                    overridden[env_name] = (value, current)
+            else:
+                os.environ[env_name] = value
+        for env_name, (yaml_value, env_value) in sorted(overridden.items()):
+            # Selecting the row from the shell is the supported workflow; a
+            # knob overridden from the shell is more likely to be stale.
+            level = logging.INFO if env_name == "GR_ORCHESTRATOR" else logging.WARNING
+            _log.log(
+                level,
+                "orchestration: %s=%s from the environment overrides %s from the agent config",
+                env_name, env_value, yaml_value,
+            )
 
     def _answer_format(self, task: ResearchTask) -> str:
         explicit = str(self.config.get("answer_format") or "").strip()
@@ -176,6 +291,7 @@ class GPTResearcherAgent:
         state = self._build_state(task, gtraj, report_text)
         traj = state.trajectory()
         traj.final_stats.update(self._extra_stats(gtraj, wall))
+        traj.final_stats["orchestration"] = dict(self._orchestration_effective)
         traj.final_stats["retrieved_docids"] = self._retrieved_docids(researcher, gtraj)
         traj.final_stats["_label_items"] = [
             {
