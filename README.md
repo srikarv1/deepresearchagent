@@ -33,8 +33,8 @@ adr doctor          # shows which repos and keys resolved
 
 | Key | Needed for |
 |---|---|
-| `OPENAI_API_KEY` | DeepResearch Bench RACE + FACT (with `LLM_BACKEND=openai`), and all Gym judges. Honours `OPENAI_BASE_URL` for local vLLM/Ollama. |
-| `OPENROUTER_API_KEY` | DeepResearch Bench RACE + FACT (with `LLM_BACKEND=openrouter`, the default). |
+| `OPENAI_API_KEY` | DeepResearch Bench RACE + FACT (judge `backend: openai` in `configs/eval/deep_research_bench.yaml`, the checked-in value), and all Gym judges. Honours `OPENAI_BASE_URL` for local vLLM/Ollama. |
+| `OPENROUTER_API_KEY` | DeepResearch Bench RACE + FACT with judge `backend: openrouter`. |
 | `JINA_API_KEY` | FACT only; it scrapes every cited page. |
 | `DEEPRESEARCHGYM_API_KEY` | The Gym retrieval sandbox. |
 | `TAVILY_API_KEY` | Live web search, typical for DeepResearch Bench runs. |

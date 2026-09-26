@@ -204,6 +204,7 @@ def _run_official(
             run_race=bool(eval_cfg.get("run_race", True)),
             run_fact=bool(eval_cfg.get("run_fact", True)),
             timeout_s=eval_cfg.get("timeout_s"),
+            judge_cfg=eval_cfg.get("judge") or {},
         )
     if bench in {"deep_research_gym", "gym"}:
         eval_cfg = _eval_file(config, "deep_research_gym")

@@ -74,13 +74,9 @@ export TAVILY_API_KEY="tvly-..."         # Tavily search API
 export JINA_API_KEY="jina_..."           # DRB FACT judge scraping
 ```
 
-### Judge and context config
+### Judge config
 
-```bash
-export LLM_BACKEND=openai
-export RACE_MODEL=gpt-5-mini
-export FACT_MODEL=gpt-5-mini
-```
+The DRB judge backend and models are the `judge:` block of `configs/eval/deep_research_bench.yaml` (`backend`, `race_model`, `fact_model`, `clean_model`, limits); the Gym judge model is `judge_model` in `configs/eval/deep_research_gym.yaml`; the BrowseComp-Plus grader is `judge:` in `configs/eval/browsecomp_plus.yaml`. Keys stay in the environment. A `LLM_BACKEND` / `RACE_MODEL` / `FACT_MODEL` set in the shell overrides the DRB YAML for that command (logged), and `adr doctor` shows which key the effective backend needs.
 
 ### Model overrides for gpt-researcher
 
