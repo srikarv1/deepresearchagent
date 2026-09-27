@@ -8,10 +8,16 @@ Both judges use an OpenAI-compatible backend (``utils/api.py``), selected by
 ``LLM_BACKEND``: ``openai`` (needs ``OPENAI_API_KEY``) or ``openrouter``
 (default, needs ``OPENROUTER_API_KEY``). FACT scrapes through Jina. Set
 ``JINA_API_KEY``, or set ``JINA_READER=public`` to call ``r.jina.ai`` with no key.
+
+The backend, models and limits are configured as the ``judge:`` block of
+``configs/eval/deep_research_bench.yaml`` (see ``_JUDGE_ENV_MAP``); the block
+is exported into the judge subprocesses' environment, a variable already set
+in the environment wins, and API keys are never taken from the YAML.
 """
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from typing import Any
@@ -23,11 +29,67 @@ from adr.eval.repos import find_deep_research_bench
 from adr.eval.scoring import parse_key_value_report
 
 SCRAPE_KEY = "JINA_API_KEY"
+_log = logging.getLogger(__name__)
+
+# ``judge:`` block of configs/eval/deep_research_bench.yaml -> upstream env vars.
+_JUDGE_ENV_MAP = {
+    "backend": "LLM_BACKEND",
+    "race_model": "RACE_MODEL",
+    "fact_model": "FACT_MODEL",
+    "clean_model": "CLEAN_MODEL",
+    "max_output_tokens": "MAX_OUTPUT_TOKENS",
+    "http_timeout_s": "LLM_HTTP_TIMEOUT",
+    "jina_reader": "JINA_READER",
+}
+_JUDGE_ENV_NAMES = tuple(_JUDGE_ENV_MAP.values())
 
 
-def _judge_key() -> tuple[str, str]:
-    """Return (key_env_name, backend_name) based on LLM_BACKEND."""
-    backend = os.environ.get("LLM_BACKEND", "openrouter").lower()
+def judge_env(judge_cfg: dict[str, Any] | None) -> dict[str, str]:
+    """Render the ``judge:`` block as env values. ``None`` entries are skipped;
+    unknown keys raise so a typo fails the evaluation instead of silently
+    scoring with the upstream defaults."""
+    if not judge_cfg:
+        return {}
+    if not isinstance(judge_cfg, dict):
+        raise ValueError(f"judge must be a mapping, got {type(judge_cfg).__name__}")
+    out: dict[str, str] = {}
+    for key, value in judge_cfg.items():
+        env_name = _JUDGE_ENV_MAP.get(key)
+        if env_name is None:
+            raise ValueError(f"judge: unknown key {key!r}; known keys: {', '.join(_JUDGE_ENV_MAP)}")
+        if value is None:
+            continue
+        out[env_name] = str(value).lower() if key == "backend" else str(value)
+    return out
+
+
+def _merge_judge_env(env: dict[str, str], judge_cfg: dict[str, Any] | None) -> dict[str, str]:
+    """Add the YAML judge settings to ``env`` for the subprocesses. ``env``
+    entries (``adr rollouts --env``) and non-empty process variables win over
+    the YAML; a process override is logged. Returns the effective values."""
+    for name, value in judge_env(judge_cfg).items():
+        if name in env:
+            continue
+        current = os.environ.get(name, "")
+        if current.strip():
+            if current != value:
+                _log.warning(
+                    "judge: %s=%s from the environment overrides %s from configs/eval/deep_research_bench.yaml",
+                    name, current, value,
+                )
+            continue
+        env[name] = value
+    return {
+        name: env.get(name) or os.environ.get(name, "")
+        for name in _JUDGE_ENV_NAMES
+        if (env.get(name) or os.environ.get(name, "")).strip()
+    }
+
+
+def _judge_key(env: dict[str, str] | None = None) -> tuple[str, str]:
+    """Return (key_env_name, backend_name) for the effective LLM_BACKEND."""
+    env = env or {}
+    backend = (env.get("LLM_BACKEND") or os.environ.get("LLM_BACKEND") or "openrouter").lower()
     if backend == "openai":
         return "OPENAI_API_KEY", backend
     return "OPENROUTER_API_KEY", backend
@@ -46,11 +108,13 @@ def run_deep_research_bench(
     run_fact: bool = True,
     extra_env: dict[str, str] | None = None,
     timeout_s: float | None = None,
+    judge_cfg: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Write the DRB raw file, then run RACE and FACT and read their scores back."""
     export_path = run_dir / "exports" / "deep_research_bench" / f"{model_name}.jsonl"
     export_deep_research_bench(trajectories, export_path)
 
+    env = dict(extra_env or {})
     result: dict[str, Any] = {
         "bench": "deep_research_bench",
         "export": str(export_path),
@@ -58,6 +122,7 @@ def run_deep_research_bench(
         "reason": None,
         "race": None,
         "fact": None,
+        "judge": _merge_judge_env(env, judge_cfg),
     }
 
     located = find_deep_research_bench(third_party_dir)
@@ -67,8 +132,7 @@ def run_deep_research_bench(
     bench_root = located.path
     result["repo"] = str(bench_root)
 
-    env = dict(extra_env or {})
-    key_name, backend = _judge_key()
+    key_name, backend = _judge_key(env)
     if not (os.environ.get(key_name) or env.get(key_name)):
         result["reason"] = (
             f"{key_name} is not set (LLM_BACKEND={backend}). "

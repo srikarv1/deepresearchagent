@@ -4,9 +4,30 @@ name: deep_research_bench
 third_party_dir: null
 query_file: data/benchmarks/deep_research_bench/query.jsonl
 
-# RACE and FACT use an OpenAI-compatible backend (LLM_BACKEND=openai|openrouter).
-# Set OPENAI_API_KEY or OPENROUTER_API_KEY accordingly.
-# FACT additionally scrapes cited pages and needs JINA_API_KEY.
+# RACE / FACT judge. Each key maps to one environment variable of the upstream
+# utils/api.py (src/adr/eval/deep_research_bench.py, _JUDGE_ENV_MAP), exported
+# for the judge subprocesses. A variable already set in the environment
+# overrides the value here (logged); null leaves it unset (upstream default).
+# API keys are read from the environment only. The effective values are
+# written to metrics/summary.json under official.deep_research_bench.judge.
+judge:
+  # LLM_BACKEND: openai (OPENAI_API_KEY, honours OPENAI_BASE_URL) |
+  # openrouter (OPENROUTER_API_KEY, honours OPENROUTER_BASE_URL).
+  backend: openai
+  # RACE_MODEL: report-quality judge.
+  race_model: gpt-5-mini
+  # FACT_MODEL: citation-support judge.
+  fact_model: gpt-5-mini
+  # CLEAN_MODEL: report-cleaning model run before RACE unless skip_cleaning.
+  clean_model: null
+  # MAX_OUTPUT_TOKENS: completion cap per judge call.
+  max_output_tokens: null
+  # LLM_HTTP_TIMEOUT: seconds per judge request.
+  http_timeout_s: null
+  # JINA_READER: public = FACT scrapes cited pages through r.jina.ai without a
+  # key; otherwise JINA_API_KEY from the environment is used.
+  jina_reader: null
+
 language: en
 workers: 4
 skip_cleaning: false

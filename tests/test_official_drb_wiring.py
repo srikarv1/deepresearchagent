@@ -43,6 +43,7 @@ Path(args.raw_data_dir, "_stub_call.json").write_text(json.dumps({
     "only_en": args.only_en,
     "only_zh": args.only_zh,
     "judge_key_seen": bool(os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OPENAI_API_KEY")),
+    "judge_env": {k: os.environ.get(k) for k in ("LLM_BACKEND", "RACE_MODEL", "FACT_MODEL", "CLEAN_MODEL", "JINA_READER")},
     "target_rows": sum(
         1 for _ in open(Path(args.raw_data_dir, args.target_model + ".jsonl"), encoding="utf-8")
     ),
@@ -151,3 +152,70 @@ def test_export_prompt_matches_query_file_for_reference_pairing(tmp_path: Path):
     row = json.loads(dest.read_text(encoding="utf-8").splitlines()[0])
     assert row["prompt"] == query.text
     assert row["id"] == int(query.id)
+
+
+# ── judge: block -> env of the judge subprocesses ─────────────────────
+
+
+def test_judge_env_maps_keys_and_rejects_unknown():
+    from adr.eval.deep_research_bench import judge_env
+
+    assert judge_env(
+        {"backend": "OpenAI", "race_model": "gpt-5-mini", "fact_model": None, "http_timeout_s": 600}
+    ) == {"LLM_BACKEND": "openai", "RACE_MODEL": "gpt-5-mini", "LLM_HTTP_TIMEOUT": "600"}
+    assert judge_env(None) == {} and judge_env({}) == {}
+    with pytest.raises(ValueError, match="unknown key 'race_modle'"):
+        judge_env({"race_modle": "x"})
+
+
+def test_shipped_drb_eval_config_validates_against_the_mapping():
+    import yaml
+    from adr.eval.deep_research_bench import judge_env
+
+    cfg = yaml.safe_load(Path("configs/eval/deep_research_bench.yaml").read_text(encoding="utf-8"))
+    env = judge_env(cfg.get("judge"))
+    assert env["LLM_BACKEND"] == "openai"
+    assert env["RACE_MODEL"] == "gpt-5-mini" and env["FACT_MODEL"] == "gpt-5-mini"
+    assert "CLEAN_MODEL" not in env
+
+
+def test_judge_block_reaches_the_judge_subprocess_and_env_wins(
+    fake_bench: Path, tmp_path: Path, monkeypatch, caplog
+):
+    import logging
+
+    for name in ("LLM_BACKEND", "RACE_MODEL", "FACT_MODEL", "CLEAN_MODEL", "JINA_READER", "OPENROUTER_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "mock-key")  # backend openai comes from the YAML block
+    monkeypatch.setenv("FACT_MODEL", "gpt-5")  # explicit env wins over the block
+    monkeypatch.delenv("JINA_API_KEY", raising=False)
+
+    with caplog.at_level(logging.WARNING, logger="adr.eval.deep_research_bench"):
+        result = run_deep_research_bench(
+            [_traj()],
+            run_dir=tmp_path / "run",
+            model_name="pilot",
+            third_party_dir=fake_bench,
+            run_fact=False,
+            judge_cfg={"backend": "openai", "race_model": "gpt-5-mini", "fact_model": "gpt-5-mini"},
+        )
+
+    assert result["official"] is True, result
+    call = json.loads((fake_bench / "data" / "test_data" / "raw_data" / "_stub_call.json").read_text())
+    assert call["judge_env"]["LLM_BACKEND"] == "openai"
+    assert call["judge_env"]["RACE_MODEL"] == "gpt-5-mini"
+    assert call["judge_env"]["FACT_MODEL"] == "gpt-5"
+    assert call["judge_env"]["CLEAN_MODEL"] is None
+    assert result["judge"] == {"LLM_BACKEND": "openai", "RACE_MODEL": "gpt-5-mini", "FACT_MODEL": "gpt-5"}
+    assert any("FACT_MODEL=gpt-5 from the environment overrides gpt-5-mini" in r.message for r in caplog.records)
+
+
+def test_judge_backend_from_yaml_selects_the_key_to_check(fake_bench: Path, tmp_path: Path, monkeypatch):
+    for name in ("LLM_BACKEND", "OPENAI_API_KEY", "OPENROUTER_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    result = run_deep_research_bench(
+        [_traj()], run_dir=tmp_path / "run", model_name="pilot", third_party_dir=fake_bench,
+        judge_cfg={"backend": "openai"},
+    )
+    assert result["official"] is False
+    assert "OPENAI_API_KEY" in result["reason"] and "LLM_BACKEND=openai" in result["reason"]

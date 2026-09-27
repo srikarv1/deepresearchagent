@@ -10,7 +10,7 @@ export PATH="$PWD/.venv/bin:$PATH"
 
 echo "=== $(date) fixed-rule val ==="
 adr rollouts \
-  --config configs/rollouts_drb_random_d3b4.yaml \
+  --config configs/rollouts_drb_random.yaml \
   --out runs/eval_val_fixed \
   --split val \
   --n-seeds 1 \
@@ -24,7 +24,7 @@ echo "FIXED_EXIT=$?"
 
 echo "=== $(date) learned val ==="
 adr rollouts \
-  --config configs/rollouts_drb_random_d3b4.yaml \
+  --config configs/rollouts_drb_random.yaml \
   --out runs/eval_val_learned \
   --split val \
   --n-seeds 1 \

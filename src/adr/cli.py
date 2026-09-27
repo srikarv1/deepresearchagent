@@ -352,6 +352,28 @@ def compare_cmd(
         console.print(table)
 
 
+def _drb_judge_backend() -> tuple[str, str]:
+    """Effective DRB judge backend and where it came from: the LLM_BACKEND
+    variable, else judge.backend of configs/eval/deep_research_bench.yaml,
+    else the upstream default."""
+    import yaml
+
+    from adr.runner.config import ROOT
+
+    env_backend = os.environ.get("LLM_BACKEND", "").strip().lower()
+    if env_backend:
+        return env_backend, "LLM_BACKEND"
+    path = ROOT / "configs" / "eval" / "deep_research_bench.yaml"
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        backend = str(((data.get("judge") or {}).get("backend")) or "").strip().lower()
+    except (OSError, yaml.YAMLError):
+        backend = ""
+    if backend:
+        return backend, "configs/eval/deep_research_bench.yaml"
+    return "openrouter", "upstream default"
+
+
 @app.command("doctor")
 def doctor_cmd() -> None:
     """Report whether the official judge repos and API keys are usable."""
@@ -440,9 +462,10 @@ def doctor_cmd() -> None:
         ollama_host,
     )
 
+    drb_backend, drb_source = _drb_judge_backend()
     for name, used_for in (
-        ("OPENAI_API_KEY", "DRB judge (LLM_BACKEND=openai) + all Gym judges"),
-        ("OPENROUTER_API_KEY", "DRB judge (LLM_BACKEND=openrouter, default)"),
+        ("OPENAI_API_KEY", "all Gym judges" + (f"; DRB judge (backend openai, {drb_source})" if drb_backend == "openai" else "")),
+        ("OPENROUTER_API_KEY", f"DRB judge (backend openrouter, {drb_source})" if drb_backend == "openrouter" else "DRB judge only with backend openrouter"),
         ("JINA_API_KEY", "DRB FACT scraping"),
         ("DEEPRESEARCHGYM_API_KEY", "Gym search backend"),
         ("TAVILY_API_KEY", "live web search"),
