@@ -518,7 +518,7 @@ def test_prepare_import_exports_yaml_defaults_and_lets_explicit_env_win(
 
     for name in _ORCH_NAMES:
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv("GR_ORCHESTRATOR", "heuristic_stop")  # row selected by sweep_gym.sh
+    monkeypatch.setenv("GR_ORCHESTRATOR", "heuristic_stop")  # row selected by sweep_policies.sh
     monkeypatch.setenv("GR_STOP_PATIENCE", "")  # empty counts as unset
     monkeypatch.setenv("GR_GREEDY_MIN_GAIN", "0.1")  # a knob overridden from the shell
     monkeypatch.setattr(sys, "path", list(sys.path))

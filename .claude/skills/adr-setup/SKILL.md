@@ -103,6 +103,10 @@ The policy and every knob live in the agent YAML, one per dataset, under `orches
 
 ```bash
 GR_ORCHESTRATOR=greedy adr run -c configs/gpt_researcher_gym.yaml --run-name gym-greedy
+GR_ORCHESTRATOR=greedy adr run -c configs/gpt_researcher_gym.yaml --run-name gym-greedy
+bash scripts/sweep_policies.sh                        # every row on the Gym, knobs from the YAML
+bash scripts/sweep_policies.sh --bench drb --limit 20 # same rows on DeepResearch Bench
+GR_STOP_PATIENCE=3 bash scripts/sweep_policies.sh --policies heuristic_stop   # one knob overridden
 ```
 
 ### Pre-run checklist

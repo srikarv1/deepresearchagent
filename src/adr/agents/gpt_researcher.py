@@ -28,7 +28,7 @@ Config keys (configs/agents/gpt_researcher_{bench,gym,browsecomp_plus}.yaml, one
                    YAML (see _ORCH_ENV_MAP for the GR_* variable behind each
                    key). These are the run's defaults: an explicit GR_*
                    variable already in the environment wins, which is how
-                   scripts/sweep_gym.sh and `adr rollouts` vary the policy
+                   scripts/sweep_policies.sh and `adr rollouts` vary the policy
                    without editing the file; every such override is logged
                    and the effective values land in final_stats["orchestration"]
   env              extra env vars to set before import (dict); always applied,

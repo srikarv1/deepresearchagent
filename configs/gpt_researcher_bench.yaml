@@ -10,7 +10,8 @@ dataset:
   query_ids: []
 
 # Agent parameters (depth/breadth, models, `orchestration:`) are in the agent
-# YAML; GR_ORCHESTRATOR=<policy> selects the orchestration row for one command.
+# YAML; GR_ORCHESTRATOR=<policy> selects the orchestration row for one command,
+# scripts/sweep_policies.sh --bench drb runs every row.
 agent:
   name: gpt_researcher
   config: configs/agents/gpt_researcher_bench.yaml
