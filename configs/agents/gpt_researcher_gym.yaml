@@ -15,7 +15,7 @@ breadth: 4
 concurrency: 1
 
 # bs | browser | tavily_extract | firecrawl
-scraper: browser
+scraper: bs
 retriever: deepresearchgym
 max_search_results_per_query: 5
 max_scraper_workers: 4
