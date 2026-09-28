@@ -26,10 +26,14 @@ BCP_SPLITS_PATH = ROOT / "data" / "benchmarks" / "browsecomp_plus" / "splits.jso
 # DeepResearch Bench (English): test pins the Table 4 queries (51-55) plus 5
 # held-out ids; train is the PILOT rollout corpus. See scripts/build_drb_splits.py.
 DRB_SPLITS_PATH = ROOT / "data" / "benchmarks" / "deep_research_bench" / "splits.json"
+# DeepResearchGym: same shape as DRB over the first 50 queries of the sample
+# file; test pins the Table 2 queries (the first 5). See scripts/build_gym_splits.py.
+GYM_SPLITS_PATH = ROOT / "data" / "benchmarks" / "deep_research_gym" / "splits.json"
 
 _SPLIT_FILES = {
     DatasetName.BROWSECOMP_PLUS.value: BCP_SPLITS_PATH,
     DatasetName.DEEP_RESEARCH_BENCH.value: DRB_SPLITS_PATH,
+    DatasetName.DEEP_RESEARCH_GYM.value: GYM_SPLITS_PATH,
 }
 
 
@@ -110,8 +114,9 @@ def load_splits(dataset: str, *, path: Path | None = None) -> dict[str, list[str
     loc = path or _SPLIT_FILES.get(dataset)
     if loc is None or not Path(loc).is_file():
         raise FileNotFoundError(
-            f"No pinned split for {dataset!r}. BrowseComp-Plus: "
-            "python scripts/build_browsecomp_plus_splits.py"
+            f"No pinned split for {dataset!r}. Builders: "
+            "scripts/build_browsecomp_plus_splits.py, scripts/build_drb_splits.py, "
+            "scripts/build_gym_splits.py"
         )
     cached = _load_splits_cached(dataset, str(Path(loc).resolve()))
     return {name: list(ids) for name, ids in cached.items()}

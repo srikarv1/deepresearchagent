@@ -83,8 +83,12 @@ def load_run_budget(run_dir: Path) -> tuple[int | None, float | None]:
 
 
 def load_quality(run_dir: Path, query_id: str) -> float | None:
-    """RACE overall score for ``query_id``: from the run's copied raw results,
-    else from ``summary.json`` (``official.deep_research_bench.race.per_query``)."""
+    """Judge quality for ``query_id`` in whatever scale the bench reports
+    (``compute_reward`` maps 0-100 to [0, 1]). DeepResearch Bench: RACE
+    overall score from the run's copied raw results, else from
+    ``summary.json`` (``official.deep_research_bench.race.per_query``).
+    DeepResearchGym: ``official.deep_research_gym.quality.per_query_normalized``
+    from ``summary.json``."""
     run_dir = Path(run_dir)
     copy = run_dir / "metrics" / "race_raw_results.jsonl"
     if copy.exists():
@@ -100,13 +104,18 @@ def load_quality(run_dir: Path, query_id: str) -> float | None:
             data = json.loads(summary.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             return None
-        race = ((data.get("official") or {}).get("deep_research_bench") or {}).get("race") or {}
+        official = data.get("official") or {}
+        race = (official.get("deep_research_bench") or {}).get("race") or {}
         per_query = race.get("per_query") or {}
         row = per_query.get(str(query_id))
         if isinstance(row, dict) and "overall_score" in row:
             return float(row["overall_score"])
         if isinstance(row, (int, float)):
             return float(row)
+        gym_quality = (official.get("deep_research_gym") or {}).get("quality") or {}
+        gym_row = (gym_quality.get("per_query_normalized") or {}).get(str(query_id))
+        if isinstance(gym_row, (int, float)):
+            return float(gym_row)
     return None
 
 
