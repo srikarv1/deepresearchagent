@@ -113,8 +113,21 @@ def is_complete(run_dir: Path, query_id: str) -> bool:
     return bool(data.get("report")) and not data.get("error")
 
 
-def is_evaluated(run_dir: Path) -> bool:
-    return (run_dir / "metrics" / "race_raw_results.jsonl").exists()
+def is_evaluated(run_dir: Path, bench: str = "deep_research_bench") -> bool:
+    """True once the official judge for ``bench`` has scored this rollout:
+    ``summary.json`` carries ``official.<bench>.official == True``. The DRB
+    per-query RACE copy also counts, for corpora judged before the summary
+    block existed."""
+    if bench == "deep_research_bench" and (run_dir / "metrics" / "race_raw_results.jsonl").exists():
+        return True
+    summary = run_dir / "metrics" / "summary.json"
+    if not summary.exists():
+        return False
+    try:
+        data = json.loads(summary.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return bool(((data.get("official") or {}).get(bench) or {}).get("official"))
 
 
 def plan_rollouts(
@@ -247,13 +260,13 @@ def run_rollouts(
             if res.returncode != 0 or not is_complete(spec.run_dir, spec.query_id):
                 res.status = "failed"
                 res.error = res.error or f"exit {res.returncode} or no report; see {spec.log_path}"
-        if evaluate and res.status in {"done", "skipped"} and not is_evaluated(spec.run_dir):
+        if evaluate and res.status in {"done", "skipped"} and not is_evaluated(spec.run_dir, evaluate):
             with eval_lock:
                 rc = _evaluate(spec.run_dir, evaluate, spec.log_path, env, timeout_s)
             res.eval_returncode = rc
-            res.evaluated = rc == 0 and is_evaluated(spec.run_dir)
+            res.evaluated = rc == 0 and is_evaluated(spec.run_dir, evaluate)
         elif evaluate:
-            res.evaluated = is_evaluated(spec.run_dir)
+            res.evaluated = is_evaluated(spec.run_dir, evaluate)
         return res
 
     with ThreadPoolExecutor(max_workers=max(1, parallel)) as pool:

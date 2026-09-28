@@ -10,7 +10,7 @@ import pytest
 
 from adr.datasets.loader import load_queries
 from adr.datasets.splits import GYM_SPLITS_PATH, ids_for_split, load_splits, split_of
-from adr.rollouts.driver import plan_rollouts, run_id_for
+from adr.rollouts.driver import is_evaluated, plan_rollouts, run_id_for
 from adr.rollouts.reward import RewardConfig, compute_reward, load_quality
 from adr.runner.config import ROOT
 
@@ -68,3 +68,22 @@ def test_load_quality_reads_gym_per_query_and_reward_scales_it(tmp_path: Path):
     cfg = RewardConfig(token_budget=1, latency_budget_s=1.0, lambda_tok=0, lambda_lat=0, shaping=False)
     r = compute_reward(quality=load_quality(run, "879779"), goal=0, tokens=0, latency_s=0, rounds=[], cfg=cfg)
     assert r.quality == pytest.approx(0.615)
+
+
+def test_is_evaluated_is_bench_aware(tmp_path: Path):
+    run = tmp_path / "run"
+    (run / "metrics").mkdir(parents=True)
+    assert is_evaluated(run, "deep_research_gym") is False
+    (run / "metrics" / "summary.json").write_text(json.dumps({
+        "official": {"deep_research_gym": {"official": True, "quality": {"n": 1}}}
+    }))
+    assert is_evaluated(run, "deep_research_gym") is True
+    assert is_evaluated(run, "deep_research_bench") is False
+    # A judge that ran but produced no scores must not count as evaluated.
+    (run / "metrics" / "summary.json").write_text(json.dumps({
+        "official": {"deep_research_gym": {"official": False, "reason": "No Gym metric produced scores"}}
+    }))
+    assert is_evaluated(run, "deep_research_gym") is False
+    # DRB keeps its per-query RACE copy as evidence.
+    (run / "metrics" / "race_raw_results.jsonl").write_text("")
+    assert is_evaluated(run) is True
