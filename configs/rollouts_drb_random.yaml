@@ -16,6 +16,7 @@ concurrency: 1            # gpt-researcher trackers are process-global
 dataset:
   name: deep_research_bench
   language: en
+  split: train            # data/benchmarks/deep_research_bench/splits.json
   limit: 30
   query_ids: []
 
