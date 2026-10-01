@@ -8,6 +8,29 @@ from openai import AsyncOpenAI
 from adr.core.types import TokenUsage
 from adr.llm.base import LLMResponse, Message
 
+# gpt-5 / o-series reject `max_tokens` (want max_completion_tokens) and often
+# reject temperature other than the default. Used by the BCP judge stand-in.
+_REASONING_PREFIXES = ("gpt-5", "o1", "o3", "o4")
+
+
+def is_reasoning_model(model: str) -> bool:
+    return (model or "").lower().startswith(_REASONING_PREFIXES)
+
+
+def chat_token_kwargs(
+    model: str, max_tokens: int, temperature: float | None
+) -> dict[str, Any]:
+    """Chat Completions extra kwargs that Azure Foundry / gpt-5 will accept."""
+    if is_reasoning_model(model):
+        out: dict[str, Any] = {"max_completion_tokens": int(max_tokens)}
+        if temperature in (1, 1.0):
+            out["temperature"] = temperature
+        return out
+    out = {"max_tokens": int(max_tokens)}
+    if temperature is not None:
+        out["temperature"] = temperature
+    return out
+
 
 class OpenAICompatLLM:
     """Chat client for OpenAI, OpenRouter, vLLM, Ollama, Together, etc."""
@@ -48,15 +71,29 @@ class OpenAICompatLLM:
             {"role": m.role, "content": m.content} if isinstance(m, Message) else dict(m)
             for m in messages
         ]
+        max_out = self.default_max_tokens if max_tokens is None else max_tokens
+        temp = self.default_temperature if temperature is None else temperature
         kwargs: dict[str, Any] = {
             "model": self.model,
             "messages": payload,
-            "temperature": self.default_temperature if temperature is None else temperature,
-            "max_tokens": self.default_max_tokens if max_tokens is None else max_tokens,
+            **chat_token_kwargs(self.model, max_out, temp),
         }
         if extra:
             kwargs.update(extra)
-        response = await self._client.chat.completions.create(**kwargs)
+        try:
+            response = await self._client.chat.completions.create(**kwargs)
+        except Exception as exc:
+            msg = str(exc).lower()
+            retry = False
+            if "max_completion_tokens" in msg and "max_tokens" in kwargs:
+                kwargs["max_completion_tokens"] = kwargs.pop("max_tokens")
+                retry = True
+            if "temperature" in msg and "temperature" in kwargs:
+                kwargs.pop("temperature", None)
+                retry = True
+            if not retry:
+                raise
+            response = await self._client.chat.completions.create(**kwargs)
         choice = response.choices[0].message
         text = choice.content or ""
         usage = TokenUsage()
