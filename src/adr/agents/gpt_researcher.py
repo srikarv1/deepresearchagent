@@ -93,9 +93,9 @@ _ORCH_ENV_MAP = {
     "compression.llmlingua_model": "GR_LLMLINGUA_MODEL",
     "greedy.min_gain": "GR_GREEDY_MIN_GAIN",
     "greedy.lambda": "GR_GREEDY_LAMBDA",
-    "heuristic_stop.gain_threshold": "GR_STOP_GAIN_THRESHOLD",
+    "heuristic_stop.prune_gain": "GR_STOP_PRUNE_GAIN",
+    "heuristic_stop.satisfaction": "GR_STOP_SATISFACTION",
     "heuristic_stop.min_rounds": "GR_STOP_MIN_ROUNDS",
-    "heuristic_stop.patience": "GR_STOP_PATIENCE",
     "heuristic_stop.retain": "GR_STOP_RETAIN",
     "random.seed": "GR_ORCH_SEED",
     "random.params": "GR_RANDOM_PARAMS",
@@ -388,7 +388,10 @@ class GPTResearcherAgent:
                         goal=fn.subquery,
                         status="open",
                     )
-                state.subtasks[fn.node_id].status = "done" if fn.status == "completed" else "active"
+                state.subtasks[fn.node_id].status = {
+                    "completed": "done",
+                    "pruned": "dropped",  # the fork's local, per-path termination
+                }.get(fn.status, "active")
 
             # Add this round's new evidence. Items from earlier rounds are
             # already present; first insertion wins (preserves retrieval_round).

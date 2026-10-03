@@ -106,7 +106,7 @@ GR_ORCHESTRATOR=greedy adr run -c configs/gpt_researcher_gym.yaml --run-name gym
 GR_ORCHESTRATOR=greedy adr run -c configs/gpt_researcher_gym.yaml --run-name gym-greedy
 bash scripts/sweep_policies.sh                        # every row on the Gym, knobs from the YAML
 bash scripts/sweep_policies.sh --bench drb --limit 20 # same rows on DeepResearch Bench
-GR_STOP_PATIENCE=3 bash scripts/sweep_policies.sh --policies heuristic_stop   # one knob overridden
+GR_STOP_PRUNE_GAIN=0.02 bash scripts/sweep_policies.sh --policies heuristic_stop   # one knob overridden
 ```
 
 ### Pre-run checklist
