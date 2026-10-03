@@ -43,7 +43,7 @@ orchestration:
   # the budget) | extractive (per-item chunk selection) | llmlingua (LLMLingua-2
   # compression) | prompted (one backbone-LLM call per round) | greedy (marginal
   # sub-question coverage x novelty under the budget) | heuristic_stop (default
-  # retention; terminate when the coverage gain stays low) | random (sampled
+  # retention; prunes low-gain branches, terminates only on satisfaction) | random (sampled
   # orchestration for rollouts) | typesafe (TypeSafe Jev judges each item).
   policy: legacy
   # GR_CONTEXT_BUDGET_TOKENS: retained-evidence budget per round, approximate
@@ -72,12 +72,17 @@ orchestration:
     # GR_GREEDY_LAMBDA: exponent on the novelty discount; 0 disables it.
     lambda: 1.0
   heuristic_stop:
-    # GR_STOP_GAIN_THRESHOLD: coverage gain g_t = Phi(K_t) - Phi(K_{t-1}) below
-    # which a round counts as low-gain.
-    gain_threshold: 0.01
-    # GR_STOP_PATIENCE: consecutive low-gain rounds before terminating.
-    patience: 2
-    # GR_STOP_MIN_ROUNDS: first round at which the stop rule is evaluated.
+    # GR_STOP_PRUNE_GAIN: a frontier branch whose coverage gain over the pool
+    # before the round, g_t^(v) = Phi(K_{t-1} u N_v) - Phi(K_{t-1}), is below
+    # this is not expanded further (local: its evidence stays, sibling subtrees
+    # are unaffected). At the root K_0 is empty, so no top-level branch is
+    # pruned before it has been searched.
+    prune_gain: 0.01
+    # GR_STOP_SATISFACTION: terminate the whole run once every sub-question is
+    # covered, i.e. min over sub-questions of the best retained cosine >= this.
+    # 1.0 disables global termination; the row then prunes locally only.
+    satisfaction: 1.0
+    # GR_STOP_MIN_ROUNDS: first round at which global termination is considered.
     min_rounds: 2
     # GR_STOP_RETAIN: filter (per-sub-query EmbeddingsFilter verdict) | all.
     retain: filter
