@@ -1,0 +1,53 @@
+# ReplayGym (Bedrock) variant of gpt_researcher_gym.yaml: identical tree, search and
+# orchestration; LLMs = gpt-oss-120b on Bedrock, embeddings = local bge-small via scripts/embed_server.py (:8323).
+# OPENAI_API_KEY must hold the Bedrock bearer token (scripts/replaygym_env.sh).
+name: gpt_researcher
+repo_path: null
+depth: 3
+breadth: 4
+concurrency: 1
+scraper: bs
+retriever: deepresearchgym
+max_search_results_per_query: 5
+max_scraper_workers: 4
+trajectory_dir: runs/_gpt_researcher_raw
+keep_trajectory_files: true
+orchestration:
+  policy: legacy
+  context_budget_tokens: 50000
+  feature_tau: null
+  feature_tau_c: null
+  topk:
+    k: null
+  compression:
+    rate: null
+    llmlingua_model: null
+  greedy:
+    min_gain: 0.0
+    lambda: 1.0
+  heuristic_stop:
+    gain_threshold: 0.01
+    patience: 2
+    min_rounds: 2
+    retain: filter
+  random:
+    seed: null
+    params: null
+  typesafe:
+    model: jev-1.13.0
+    keep_min: 0.5
+    boilerplate_max: 0.7
+    stop_min: 0.75
+    min_rounds: 2
+    support_k: 3
+    batch: 20
+    snippet_chars: 600
+env:
+  STRATEGIC_LLM: openai:openai.gpt-oss-120b
+  SMART_LLM: openai:openai.gpt-oss-120b
+  FAST_LLM: openai:openai.gpt-oss-120b
+  EMBEDDING: openai:bge-small
+  DEEPRESEARCHGYM_DATASET: fineweb
+  OPENAI_BASE_URL: https://bedrock-mantle.us-east-1.api.aws/v1
+  EMBEDDING_KWARGS: '{"openai_api_base": "http://127.0.0.1:8323/v1", "openai_api_key":
+    "local", "check_embedding_ctx_length": false}'

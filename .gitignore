@@ -237,3 +237,6 @@ third_party/*
 
 .DS_Store
 *.log
+
+# gpt-researcher trajectory/search/scraper caches written at run time
+trajectory_logs/
