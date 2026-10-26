@@ -1,0 +1,25 @@
+--- a/third_party/gpt-researcher/gpt_researcher/scraper/browser/lifecycle.py
++++ b/third_party/gpt-researcher/gpt_researcher/scraper/browser/lifecycle.py
+@@ -47,6 +47,9 @@
+         if alive:self.errors.append('owned_process_survived')
+ 
+     def close(self,driver,timeout=10):
++        import uuid
++        cleanup_id=uuid.uuid4().hex
++        fallback=False
+         self.capture();done=threading.Event();failed=[]
+         def shutdown():
+             try:
+@@ -60,8 +63,10 @@
+             # Capture before root removal, retain descendants even if reparented.
+             with self.lock:survivors=any(p.is_running() for p in self.owned.values())
+             if not finished or failed or survivors:
+-                print('BROWSER_CLEANUP_FALLBACK: owned process cleanup',flush=True)
++                fallback=True
++                print(f'BROWSER_CLEANUP_FALLBACK: cleanup_id={cleanup_id} owned process cleanup',flush=True)
+                 self.terminate_owned()
+         finally:
+             self.stop.set();self.watcher.join(timeout=1)
+-        if self.errors:print('BROWSER_CLEANUP_INCOMPLETE: manual integrity review required',flush=True)
++        if self.errors:print(f'BROWSER_CLEANUP_INCOMPLETE: cleanup_id={cleanup_id} manual integrity review required',flush=True)
++        elif fallback:print(f'BROWSER_CLEANUP_FALLBACK_SUCCEEDED: cleanup_id={cleanup_id} owned process cleanup completed',flush=True)

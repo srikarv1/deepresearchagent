@@ -1,0 +1,6 @@
+source: runs/synthetic-branch-v2-smoke/smoke-1-repaired-world-v1
+output: runs/synthetic-branch-v2-smoke/smoke-1-annotation-only-v1
+model: gpt-5-mini
+completion_tokens: 16000
+candidates: 10
+max_attempts_per_candidate: 1

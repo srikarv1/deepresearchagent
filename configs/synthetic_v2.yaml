@@ -1,0 +1,47 @@
+output_root: data/synthetic/v2
+heldout_path: data/heldout/drb_baseline.json
+trajectories: 20
+max_attempts: 3
+model: gpt-5-mini
+max_completion_tokens: 32000
+assignments:
+  - topic: municipal water reuse
+    structure: Which boundary conditions explain disagreement among field evaluations?
+  - topic: public library accessibility
+    structure: What measurement choices change conclusions about intervention effectiveness?
+  - topic: cooperative food cold chains
+    structure: How transferable are results from large operators to small cooperatives?
+  - topic: coastal bridge maintenance
+    structure: Which early warning indicators are supported by longitudinal evidence?
+  - topic: school ventilation
+    structure: How do observed health outcomes compare with engineering proxy measures?
+  - topic: regional rail reliability
+    structure: What causal explanations distinguish competing sources of service failures?
+  - topic: household food-waste collection
+    structure: How does effectiveness vary across settlement types and participation regimes?
+  - topic: rural broadband upkeep
+    structure: Which claims about lifecycle reliability survive independent replication?
+  - topic: urban heat mitigation
+    structure: Where do field observations contradict simulation-based recommendations?
+  - topic: industrial waste-heat recovery
+    structure: Which practical constraints explain the gap between modeled and observed performance?
+  - topic: community energy storage
+    structure: What institutional conditions alter the distribution of costs and benefits?
+  - topic: public archive preservation
+    structure: Which evidence gaps prevent choosing between conservation approaches?
+  - topic: agricultural water metering
+    structure: How do error mechanisms affect the interpretation of reported savings?
+  - topic: museum collection transport
+    structure: What thresholds are defensible from limited observational evidence?
+  - topic: low-noise road surfaces
+    structure: How do short-term improvements persist or decay under real operating conditions?
+  - topic: shared laboratory equipment
+    structure: Which comparative conclusions depend on maintenance and utilization assumptions?
+  - topic: river sediment monitoring
+    structure: When do alternative sampling methods lead to conflicting management conclusions?
+  - topic: repairable appliances
+    structure: What can independent teardown and field-failure evidence establish about durability claims?
+  - topic: district heating retrofits
+    structure: Which sources explain divergent retrofit outcomes in otherwise similar buildings?
+  - topic: accessible emergency communications
+    structure: How consistent are published evaluations across user groups and hazard scenarios?

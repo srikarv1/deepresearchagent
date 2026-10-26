@@ -1,0 +1,191 @@
+--- a/gpt_researcher/actions/query_processing.py
++++ b/gpt_researcher/actions/query_processing.py
+@@ -80,7 +80,12 @@
+ 
+     # Retriever searches are blocking HTTP calls; keep the event loop free
+     note_search(query)
+-    return await asyncio.to_thread(search_retriever.search, **search_kwargs)
++    results = await asyncio.to_thread(search_retriever.search, **search_kwargs)
++    from ..utils.development_trace import active_trace, branch_id, candidate_id
++    trace = active_trace.get()
++    if trace is not None:
++        trace.record('search_results', results, branch_id.get(), candidate_id.get())
++    return results
+ 
+ async def generate_sub_queries(
+     query: str,
+--- a/gpt_researcher/skills/deep_research.py
++++ b/gpt_researcher/skills/deep_research.py
+@@ -1,3 +1,4 @@
++from ..utils.development_trace import active_trace, branch_id as study_branch
+ from ..utils.query_gate import QueryGateError, active_observation_v2, current_branch_v2
+ from typing import List, Dict, Any, Optional, Set
+ import asyncio
+@@ -477,7 +478,8 @@
+             learnings: List[str] = None,
+             citations: Dict[str, str] = None,
+             visited_urls: Set[str] = None,
+-            on_progress=None
++            on_progress=None,
++            _study_parent=None
+     ) -> Dict[str, Any]:
+         """Conduct deep iterative research"""
+         print(f"\n📊 DEEP RESEARCH: depth={depth}, breadth={breadth}, query={query[:100]}...", flush=True)
+@@ -523,10 +525,14 @@
+         if observer_v2 is not None and self.concurrency_limit != 1:
+             raise QueryGateError('v2 observations require outer concurrency=1')
+         branch_ids_v2 = observer_v2.plan_round(serp_queries) if observer_v2 is not None else []
++        trace = active_trace.get()
++        study_ids = trace.plan(serp_queries, _study_parent, depth, breadth) if trace is not None else []
+         semaphore = asyncio.Semaphore(self.concurrency_limit)
+ 
+         async def process_query(serp_query: Dict[str, str]) -> Optional[Dict[str, Any]]:
+             async with semaphore:
++                if trace is not None:
++                    trace.activate(study_branch.get())
+                 try:
+                     progress.current_query = serp_query['query']
+                     if on_progress:
+@@ -584,6 +590,19 @@
+                     logger.error(f"Error processing query '{serp_query['query']}': {str(e)}")
+                     print(f"\n❌ DEEP RESEARCH ERROR: {str(e)}\n{error_details}", flush=True)
+                     return None
++
++        original_process_query = process_query
++        if trace is not None:
++            async def process_query(serp_query):
++                bid = study_ids[next(i for i, q in enumerate(serp_queries) if q is serp_query)]
++                token = study_branch.set(bid)
++                result = None
++                try:
++                    result = await original_process_query(serp_query)
++                    return result
++                finally:
++                    trace.finish(bid, result)
++                    study_branch.reset(token)
+ 
+         # Process queries concurrently with limit
+         if observer_v2 is not None:
+@@ -604,6 +623,7 @@
+                 results.append(await observed_query(q, bid))
+         else:
+             results = await asyncio.gather(*[process_query(q) for q in serp_queries])
++        study_results = list(results)
+         publication_results_v2 = list(results)
+         results = [r for r in results if r is not None]
+ 
+@@ -837,6 +857,8 @@
+             meta=decision_meta,
+         )
+ 
++        if trace is not None:
++            trace.publish(study_ids, round_id)
+         if observer_v2 is not None:
+             observer_v2.publish_round(branch_ids_v2, publication_results_v2,
+                                       self.trajectory_logger._global_evidence)
+@@ -869,7 +891,9 @@
+                     learnings=all_learnings,
+                     citations=all_citations,
+                     visited_urls=all_visited_urls,
+-                    on_progress=on_progress
++                    on_progress=on_progress,
++                    _study_parent=(study_ids[next(i for i, r in enumerate(study_results) if r is result)]
++                                   if trace is not None else None)
+                 )
+ 
+                 all_learnings = deeper_results['learnings']
+--- a/gpt_researcher/skills/researcher.py
++++ b/gpt_researcher/skills/researcher.py
+@@ -1,3 +1,4 @@
++from ..utils.development_trace import active_trace, branch_id, candidate_id
+ from ..utils.query_gate import active_gate, QueryGateError, note_search, note_retrieval, active_observation_v2, current_branch_v2
+ """Research conductor skill for GPT Researcher.
+ 
+@@ -384,6 +385,8 @@
+ 
+         # Using asyncio.gather to process the sub_queries asynchronously
+         try:
++            trace = active_trace.get()
++            trace_candidates = trace.snapshot(branch_id.get(), sub_queries) if trace is not None else []
+             gate = active_gate.get()
+             observer_v2 = active_observation_v2.get()
+             if observer_v2 is not None:
+@@ -397,8 +400,9 @@
+                 if gate is None:
+                     context = await asyncio.gather(
+                         *[
+-                            self._process_sub_query(sub_query, scraped_data, query_domains)
+-                            for sub_query in sub_queries
++                            (trace.dispatch(self._process_sub_query, trace_candidates[i], sub_query, scraped_data, query_domains)
++                             if trace is not None else self._process_sub_query(sub_query, scraped_data, query_domains))
++                            for i, sub_query in enumerate(sub_queries)
+                         ]
+                     )
+                 else:
+@@ -883,6 +887,9 @@
+                     if search_results:
+                         _global_search_cache.put(query, retriever_class.__name__, search_results, _max_results)
+ 
++                trace = active_trace.get()
++                if trace is not None:
++                    trace.record('search_results', search_results, branch_id.get(), candidate_id.get())
+                 if not search_results:
+                     continue
+ 
+@@ -984,6 +991,9 @@
+         if self.researcher.vector_store:
+             self.researcher.vector_store.load(scraped_content)
+ 
++        trace = active_trace.get()
++        if trace is not None:
++            trace.raw(scraped_content, branch_id.get(), candidate_id.get())
+         return scraped_content
+ 
+     async def _search(self, retriever, query):
+--- a/gpt_researcher/utils/query_gate.py
++++ b/gpt_researcher/utils/query_gate.py
+@@ -1,5 +1,9 @@
+ """Optional task-local inner-query hook. No ML/provider dependencies."""
+ from contextvars import ContextVar
++
++active_trace = ContextVar('adr_development_trace', default=None)
++study_branch_id = ContextVar('adr_development_branch', default=None)
++study_candidate_id = ContextVar('adr_development_candidate', default=None)
+ 
+ HOOK_VERSION = 1
+ active_gate = ContextVar('adr_inner_query_gate', default=None)
+@@ -14,6 +18,9 @@
+ 
+ 
+ def note_search(query):
++    trace = active_trace.get()
++    if trace is not None:
++        trace.search(query, study_branch_id.get(), study_candidate_id.get())
+     observer = active_observation_v2.get()
+     if observer is not None:
+         observer.note_search(query)
+@@ -25,6 +32,9 @@
+ 
+ 
+ def note_reads(count):
++    trace = active_trace.get()
++    if trace is not None:
++        trace.read(count, study_branch_id.get(), study_candidate_id.get())
+     observer = active_observation_v2.get()
+     if observer is not None:
+         observer.reads += count
+@@ -34,6 +44,9 @@
+ 
+ 
+ def note_retrieval():
++    trace = active_trace.get()
++    if trace is not None:
++        trace.event('retrieval_invoked', branch_id=study_branch_id.get(), candidate_id=study_candidate_id.get())
+     decision = active_decision.get()
+     if decision is not None:
+         decision['retrieval_invoked'] = True
+--- /dev/null
++++ b/gpt_researcher/utils/development_trace.py
+@@ -0,0 +1,2 @@
++"""Opt-in observational contexts; no research/provider dependency."""
++from .query_gate import active_trace, study_branch_id as branch_id, study_candidate_id as candidate_id

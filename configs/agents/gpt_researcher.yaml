@@ -4,6 +4,11 @@
 # are not used.
 name: gpt_researcher
 
+# Additional inner search-query gate; disabled imports no MLP/client.
+query_gate:
+  enabled: false
+  run: runs/mlp/baseline-v1-20260923T044920906450Z
+
 # Path to the instrumented gpt-researcher fork (WilliamOdinson/gpt-researcher).
 # null resolves via ADR_GR_DIR, third_party/gpt-researcher (from
 # scripts/bootstrap_third_party.sh), or a sibling clone; see `adr doctor`.

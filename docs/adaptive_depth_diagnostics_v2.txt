@@ -1,0 +1,22 @@
+Sequential diagnostics v2 (research semantics unchanged)
+
+retrieval-integrity-v2-query-id-scope fixes candidate-ID shadowing of expected
+query IDs. Missing reports, incomplete candidate lifecycles, and other integrity
+invariants remain required.
+
+sequential-redacted-diagnostics-v2 saves merged stdout/stderr in timestamped,
+flushed console.redacted.jsonl before classification. Environment credential
+values, credential assignments, authorization/cookie headers, URL credentials
+and query values are redacted before persistence. This deliberately sacrifices
+sensitive request detail while retaining provider/browser error context.
+
+Browser cleanup messages carry a per-cleanup correlation ID. Attempted fallback
+is not a failure if followed by success. Incomplete cleanup and fallback with no
+recorded outcome remain blocking. No cleanup algorithm, timeout, Chrome option,
+worker count, retrieval logic, or frozen research setting changes.
+
+The previous manifest is preserved. Only that exact predecessor is compatible
+with this diagnostics revision; migration preserves acceptance statuses and
+history. Historical ambiguous error categories cannot be cleared automatically.
+The existing q51 attempt remains held pending resolution of discarded console
+signals despite its complete research artifacts and corrected passing audit.

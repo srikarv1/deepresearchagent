@@ -1,0 +1,23 @@
+name: gpt_researcher
+query_gate:
+  enabled: false
+repo_path: null
+depth: 3
+breadth: 4
+concurrency: 1
+scraper: browser
+retriever: tavily
+max_search_results_per_query: 5
+max_scraper_workers: 4
+trajectory_dir: runs/_gpt_researcher_adaptive_depth_raw
+keep_trajectory_files: true
+env:
+  STRATEGIC_LLM: openai:gpt-5-mini
+  SMART_LLM: openai:gpt-5-mini
+  FAST_LLM: openai:gpt-5-mini
+  EMBEDDING: openai:text-embedding-3-small
+  GR_ORCHESTRATOR: none
+  GR_CONTEXT_BUDGET_TOKENS: '50000'
+  GPT_RESEARCHER_BROWSER_HEADLESS: 'true'
+branch_expansion:
+  policy: hierarchical-depth-budget-one-per-root-v1

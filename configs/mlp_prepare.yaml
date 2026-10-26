@@ -1,0 +1,8 @@
+source: data/synthetic/v1/cleaned-20260923T021710222070Z-r1/examples.jsonl
+heldout: data/heldout/drb_baseline.json
+output: data/mlp/cleaned-r1-seed42-azure
+seed: 42
+validation_trajectories: 4
+model: text-embedding-3-small
+embedding_dimensions: 1536
+batch_size: 16

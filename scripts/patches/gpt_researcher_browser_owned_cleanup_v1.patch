@@ -1,0 +1,141 @@
+--- a/gpt_researcher/scraper/browser/browser.py
++++ b/gpt_researcher/scraper/browser/browser.py
+@@ -47,6 +47,7 @@
+                            "AppleWebKit/537.36 (KHTML, like Gecko) "
+                            "Chrome/128.0.0.0 Safari/537.36")
+         self.driver = None
++        self._owned_browser = None
+         self.use_browser_cookies = False
+         self._import_selenium()  # Import only if used to avoid unnecessary dependencies
+         self.cookie_filename = f"{self._generate_random_string(8)}.pkl"
+@@ -72,9 +73,13 @@
+             # error text being treated as page content downstream.
+             return "", [], ""
+         finally:
+-            if self.driver:
+-                self.driver.quit()
+-            self._cleanup_cookie_file()
++            try:
++                if self._owned_browser is not None:
++                    self._owned_browser.close(self.driver)
++                elif self.driver is not None:
++                    self.driver.quit()
++            finally:
++                self._cleanup_cookie_file()
+ 
+     def _import_selenium(self):
+         try:
+@@ -124,7 +129,12 @@
+                     options.add_argument("--remote-debugging-port=9222")
+                 options.add_argument("--no-sandbox")
+                 options.add_experimental_option("prefs", {"download_restrictions": 3})
+-                self.driver = webdriver.Chrome(options=options)
++                from selenium.webdriver.chrome.service import Service
++                from .lifecycle import OwnedBrowser
++                service = Service()
++                self._owned_browser = OwnedBrowser(service)
++                self.driver = webdriver.Chrome(options=options, service=service)
++                self._owned_browser.capture()
+ 
+             if self.use_browser_cookies:
+                 self._load_browser_cookies()
+--- a/gpt_researcher/skills/deep_research.py
++++ b/gpt_researcher/skills/deep_research.py
+@@ -532,6 +532,7 @@
+ 
+         async def process_query(serp_query: Dict[str, str]) -> Optional[Dict[str, Any]]:
+             async with semaphore:
++                researcher = None
+                 if trace is not None:
+                     trace.activate(study_branch.get())
+                 try:
+@@ -591,6 +592,9 @@
+                     logger.error(f"Error processing query '{serp_query['query']}': {str(e)}")
+                     print(f"\n❌ DEEP RESEARCH ERROR: {str(e)}\n{error_details}", flush=True)
+                     return None
++                finally:
++                    if researcher is not None:
++                        await asyncio.to_thread(researcher.scraper_manager.worker_pool.close)
+ 
+         original_process_query = process_query
+         if trace is not None:
+--- a/gpt_researcher/utils/workers.py
++++ b/gpt_researcher/utils/workers.py
+@@ -48,3 +48,7 @@
+             global_limiter = get_global_rate_limiter()
+             await global_limiter.wait_if_needed()
+             yield
++
++    def close(self):
++        """Release threads after all work in this research unit completes."""
++        self.executor.shutdown(wait=True, cancel_futures=False)
+--- /dev/null
++++ b/gpt_researcher/scraper/browser/lifecycle.py
+@@ -0,0 +1,67 @@
++"""browser-owned-cleanup-v1: bounded shutdown of this scrape's processes only.
++No page-work timeout, Chrome-option change, or machine-wide process matching.
++"""
++import threading
++import psutil
++
++VERSION='browser-owned-cleanup-v1'
++
++class OwnedBrowser:
++    def __init__(self,service):
++        self.service=service;self.owned={};self.lock=threading.Lock();self.stop=threading.Event()
++        self.errors=[]
++        self.watcher=threading.Thread(target=self._watch,daemon=True);self.watcher.start()
++
++    def capture(self):
++        process=getattr(self.service,'process',None)
++        if process is None or process.poll() is not None:return
++        try:
++            root=psutil.Process(process.pid)
++            with self.lock:self.owned[(root.pid,root.create_time())]=root
++            for p in root.children(recursive=True):
++                with self.lock:self.owned[(p.pid,p.create_time())]=p
++        except psutil.NoSuchProcess:pass
++        except psutil.Error:self.errors.append('ownership_capture_failed')
++
++    def _watch(self):
++        while not self.stop.wait(.1):self.capture()
++
++    def terminate_owned(self):
++        self.capture()
++        with self.lock:items=list(self.owned.items())
++        live=[]
++        for (pid,born),p in reversed(items):
++            try:
++                if p.is_running() and p.create_time()==born:
++                    p.terminate();live.append(p)
++            except psutil.NoSuchProcess:pass
++            except psutil.Error:self.errors.append('owned_terminate_failed')
++        _,alive=psutil.wait_procs(live,timeout=3)
++        for p in alive:
++            try:
++                # psutil's Process identity protects against PID reuse.
++                if p.is_running():p.kill()
++            except psutil.NoSuchProcess:pass
++            except psutil.Error:self.errors.append('owned_kill_failed')
++        _,alive=psutil.wait_procs(alive,timeout=3)
++        if alive:self.errors.append('owned_process_survived')
++
++    def close(self,driver,timeout=10):
++        self.capture();done=threading.Event();failed=[]
++        def shutdown():
++            try:
++                if driver is not None:driver.quit()
++                else:self.service.stop()
++            except Exception:failed.append(True)
++            finally:done.set()
++        thread=threading.Thread(target=shutdown,daemon=True);thread.start()
++        finished=done.wait(timeout)
++        try:
++            # Capture before root removal, retain descendants even if reparented.
++            with self.lock:survivors=any(p.is_running() for p in self.owned.values())
++            if not finished or failed or survivors:
++                print('BROWSER_CLEANUP_FALLBACK: owned process cleanup',flush=True)
++                self.terminate_owned()
++        finally:
++            self.stop.set();self.watcher.join(timeout=1)
++        if self.errors:print('BROWSER_CLEANUP_INCOMPLETE: manual integrity review required',flush=True)

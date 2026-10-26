@@ -1,0 +1,32 @@
+run_name: redundancy-v1-baseline-q052-055
+output_dir: runs/redundancy-v1/baseline
+seed: 17
+concurrency: 1
+dataset:
+  name: deep_research_bench
+  language: en
+  limit: 4
+  query_ids:
+  - '52'
+  - '53'
+  - '54'
+  - '55'
+agent:
+  name: gpt_researcher
+  config: configs/agents/gpt_researcher_redundancy_baseline.yaml
+llm:
+  provider: mock
+  model: unused
+search:
+  backend: mock
+  top_k: 5
+budget:
+  max_steps: 32
+  max_searches: 64
+  max_reads: 128
+  max_tokens: 400000
+  max_latency_s: 1200.0
+  max_evidence: 512
+  enforce: false
+eval:
+  official_benches: []

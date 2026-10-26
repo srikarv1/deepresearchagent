@@ -1,0 +1,10 @@
+agent:
+  name: adaptive-depth-sequential-reliability-v1
+dataset:
+  language: en
+eval:
+  deep_research_bench:
+    workers: 4
+    skip_cleaning: false
+    run_race: true
+    run_fact: true

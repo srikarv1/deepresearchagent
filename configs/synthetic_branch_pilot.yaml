@@ -1,0 +1,21 @@
+output: runs/synthetic-branch-v2-pilot/pilot-1
+model: gpt-5-mini
+target_candidates: 18
+min_candidates: 15
+max_candidates: 20
+world_completion_tokens: 32000
+annotation_completion_tokens: 16000
+max_attempts_per_stage: 1
+questions:
+  - id: pilot-library
+    question: "What do published public-library evaluations establish about removing overdue fines versus automatic renewals as ways to reduce borrowing barriers, and which patron-access problems remain unaddressed by either policy?"
+    purpose: "Specific policy mechanisms and measured outcomes can become answered, creating natural redundant-search opportunities."
+  - id: pilot-school
+    question: "Why do evaluations of four-day school weeks reach different conclusions about attendance and learning, and how do instructional time, rurality, and evaluation design qualify those conclusions?"
+    purpose: "Qualified or conflicting education evidence; distinguish real contradictions from different populations and methods."
+  - id: pilot-seed
+    question: "How do community seed banks maintain viable seed collections and reliable farmer access through multi-year droughts, considering storage biology, replenishment networks, and local governance together?"
+    purpose: "Distributed evidence across biological, logistical, and institutional branches."
+  - id: pilot-water
+    question: "Which evidence on household arsenic-removal filters transfers to rural groundwater users in Bangladesh, and what changes when source-water chemistry, maintenance arrangements, and household use differ from laboratory trials or municipal systems?"
+    purpose: "Population, geography, chemistry, and field-versus-laboratory method distinctions prevent superficial resolution."

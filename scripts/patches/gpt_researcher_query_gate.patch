@@ -1,0 +1,150 @@
+diff --git a/gpt_researcher/actions/query_processing.py b/gpt_researcher/actions/query_processing.py
+index 17358f74..37cf82a7 100644
+--- a/gpt_researcher/actions/query_processing.py
++++ b/gpt_researcher/actions/query_processing.py
+@@ -1,3 +1,4 @@
++from ..utils.query_gate import note_search
+ import json_repair
+ import logging
+ from typing import Any, Dict, List
+@@ -78,6 +79,7 @@ async def get_search_results(
+         search_kwargs["max_results"] = max_results
+ 
+     # Retriever searches are blocking HTTP calls; keep the event loop free
++    note_search(query)
+     return await asyncio.to_thread(search_retriever.search, **search_kwargs)
+ 
+ async def generate_sub_queries(
+diff --git a/gpt_researcher/skills/browser.py b/gpt_researcher/skills/browser.py
+index 27d92d64..544b67e4 100644
+--- a/gpt_researcher/skills/browser.py
++++ b/gpt_researcher/skills/browser.py
+@@ -52,6 +52,8 @@ class BrowserManager:
+                 self.researcher.websocket,
+             )
+ 
++        from ..utils.query_gate import note_reads
++        note_reads(len(urls))
+         scraped_content, images = await scrape_urls(
+             urls, self.researcher.cfg, self.worker_pool
+         )
+diff --git a/gpt_researcher/skills/deep_research.py b/gpt_researcher/skills/deep_research.py
+index 09924e90..bc638879 100644
+--- a/gpt_researcher/skills/deep_research.py
++++ b/gpt_researcher/skills/deep_research.py
+@@ -1,3 +1,4 @@
++from ..utils.query_gate import QueryGateError
+ from typing import List, Dict, Any, Optional, Set
+ import asyncio
+ import logging
+@@ -571,6 +572,8 @@ Return ONLY a JSON object using this exact schema:
+                         'sources': sources if sources else []
+                     }
+ 
++                except QueryGateError:
++                    raise
+                 except Exception as e:
+                     import traceback
+                     error_details = traceback.format_exc()
+diff --git a/gpt_researcher/skills/researcher.py b/gpt_researcher/skills/researcher.py
+index ea4d64aa..492cf459 100644
+--- a/gpt_researcher/skills/researcher.py
++++ b/gpt_researcher/skills/researcher.py
+@@ -1,3 +1,4 @@
++from ..utils.query_gate import active_gate, QueryGateError, note_search, note_retrieval
+ """Research conductor skill for GPT Researcher.
+ 
+ This module provides the ResearchConductor class that manages and
+@@ -383,12 +384,16 @@ class ResearchConductor:
+ 
+         # Using asyncio.gather to process the sub_queries asynchronously
+         try:
+-            context = await asyncio.gather(
+-                *[
+-                    self._process_sub_query(sub_query, scraped_data, query_domains)
+-                    for sub_query in sub_queries
+-                ]
+-            )
++            gate = active_gate.get()
++            if gate is None:
++                context = await asyncio.gather(
++                    *[
++                        self._process_sub_query(sub_query, scraped_data, query_domains)
++                        for sub_query in sub_queries
++                    ]
++                )
++            else:
++                context = await gate.dispatch(self, sub_queries, scraped_data, query_domains)
+             self.logger.info(f"Gathered context from {len(context)} sub-queries")
+             # Filter out empty results and join the context
+             context = [c for c in context if c]
+@@ -397,6 +402,8 @@ class ResearchConductor:
+                 self.logger.info(f"Combined context size: {len(combined_context)}")
+                 return combined_context
+             return []
++        except QueryGateError:
++            raise
+         except Exception as e:
+             self.logger.error(f"Error during web search: {e}", exc_info=True)
+             return []
+@@ -645,6 +652,8 @@ class ResearchConductor:
+                 
+             return combined_context
+             
++        except QueryGateError:
++            raise
+         except Exception as e:
+             self.logger.error(f"Error processing sub-query {sub_query}: {e}", exc_info=True)
+             if self.researcher.verbose:
+@@ -850,6 +859,7 @@ class ResearchConductor:
+                     self.logger.info(f"Search cache hit for {retriever_class.__name__}: {query[:80]}")
+                 else:
+                     start_time = time.time()
++                    note_search(query)
+                     search_results = await asyncio.to_thread(
+                         retriever.search, max_results=_max_results
+                     )
+@@ -925,6 +935,7 @@ class ResearchConductor:
+         if query_domains is None:
+             query_domains = []
+ 
++        note_retrieval()
+         new_search_urls, prefetched_content = await self._search_relevant_source_urls(sub_query, query_domains)
+ 
+         # Log the research process if verbose mode is on
+diff --git a/gpt_researcher/utils/query_gate.py b/gpt_researcher/utils/query_gate.py
+new file mode 100644
+--- /dev/null
++++ b/gpt_researcher/utils/query_gate.py
+@@ -0,0 +1,31 @@
++"""Optional task-local inner-query hook. No ML/provider dependencies."""
++from contextvars import ContextVar
++
++HOOK_VERSION = 1
++active_gate = ContextVar('adr_inner_query_gate', default=None)
++active_decision = ContextVar('adr_inner_query_decision', default=None)
++
++
++class QueryGateError(RuntimeError):
++    """Fatal gate error; must bypass research's best-effort fallbacks."""
++
++
++def note_search(query):
++    gate = active_gate.get()
++    if gate is not None:
++        gate.searches += 1
++        if active_decision.get() is None:
++            gate.note_planning_query(query)
++
++
++def note_reads(count):
++    gate = active_gate.get()
++    if gate is not None:
++        gate.reads += count
++
++
++def note_retrieval():
++    decision = active_decision.get()
++    if decision is not None:
++        decision['retrieval_invoked'] = True
++        active_gate.get().event('retrieval_invoked', decision)

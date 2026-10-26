@@ -98,6 +98,8 @@ async def run_experiment_async(config: dict[str, Any]) -> RunManifest:
                 (run_dir / "errors" / f"{query.id}.txt").write_text(traceback.format_exc(), encoding="utf-8")
             if traj.final_stats is None:
                 traj.final_stats = {}
+            if "partial_research_accounting" in ctx.extra:
+                traj.final_stats["partial_research_accounting"] = ctx.extra["partial_research_accounting"]
             traj.final_stats["wall_s"] = round(time.perf_counter() - t0, 4)
             traj.final_stats["usage"] = meter.snapshot()
             traj.final_stats["budget_violations"] = list(meter.violations)

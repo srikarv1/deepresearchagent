@@ -1,0 +1,9 @@
+{
+  "schema_version": "synthetic-v2",
+  "observation_version": "mlp-observation-v2-findings",
+  "feature_version": "mlp-features-v2-source-v1",
+  "fixture_only": true,
+  "not_training_data": true,
+  "examples": 20,
+  "source_sha256": "b97ae69c53cfcecdc31e0ff4959aac0b1aeeafe40ffac2f601b8888ff7328e9c"
+}

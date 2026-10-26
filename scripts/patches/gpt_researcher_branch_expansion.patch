@@ -1,0 +1,45 @@
+--- a/gpt_researcher/skills/deep_research.py
++++ b/gpt_researcher/skills/deep_research.py
+@@ -1,3 +1,4 @@
++from ..utils.branch_expansion import allow_expansion
+ from ..utils.development_trace import active_trace, branch_id as study_branch
+ from ..utils.query_gate import QueryGateError, active_observation_v2, current_branch_v2
+ from typing import List, Dict, Any, Optional, Set
+@@ -871,8 +872,13 @@
+         )
+ 
+         for result, node_id in zip(results, result_node_ids):
++            # All current-round work and publication are already complete. This
++            # opt-in hook can suppress ONLY future recursive planning/retrieval.
++            expansion_allowed = allow_expansion(
++                study_ids[next(i for i, r in enumerate(study_results) if r is result)]
++                if trace is not None else None, depth)
+             # Continue deeper if needed, unless a policy asked to stop.
+-            if depth > 1 and not self.stop_requested:
++            if depth > 1 and not self.stop_requested and expansion_allowed:
+                 new_breadth = child_breadth.get(node_id, default_child_breadth)
+                 new_depth = depth - 1
+                 progress.current_depth += 1
+--- /dev/null
++++ b/gpt_researcher/utils/branch_expansion.py
+@@ -0,0 +1,20 @@
++"""Optional pre-recursion hook; default preserves all existing expansion behavior."""
++from contextvars import ContextVar
++
++HOOK_VERSION = 1
++active_expansion = ContextVar('adr_branch_expansion', default=None)
++
++
++def allow_expansion(branch_id, remaining_depth):
++    policy = active_expansion.get()
++    if policy is None:
++        return True
++    # Controller errors must never terminate ordinary research or prune by accident.
++    try:
++        return policy.allow(branch_id, remaining_depth)
++    except Exception:
++        try:
++            policy.failed_open(branch_id, remaining_depth)
++        except Exception:
++            pass
++        return True

@@ -1,0 +1,16 @@
+diff --git a/gpt_researcher/scraper/browser/browser.py b/gpt_researcher/scraper/browser/browser.py
+index 8dded7e6..9a7ca59d 100644
+--- a/gpt_researcher/scraper/browser/browser.py
++++ b/gpt_researcher/scraper/browser/browser.py
+@@ -39,7 +39,10 @@ class BrowserScraper:
+         self.url = url
+         self.session = session
+         self.selenium_web_browser = "chrome"
+-        self.headless = False
++        headless = os.environ.get("GPT_RESEARCHER_BROWSER_HEADLESS", "false").strip().lower()
++        if headless not in {"true", "false"}:
++            raise ValueError("GPT_RESEARCHER_BROWSER_HEADLESS must be true or false")
++        self.headless = headless == "true"
+         self.user_agent = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                            "AppleWebKit/537.36 (KHTML, like Gecko) "
+                            "Chrome/128.0.0.0 Safari/537.36")

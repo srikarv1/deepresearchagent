@@ -1,0 +1,60 @@
+{
+  "version": "browser-owned-cleanup-v1",
+  "semantics": "Lifecycle only: identical Chrome options/navigation/extraction; no scrolling deadline; four workers. Shutdown deadline is 10s followed by owned-process termination/kill waits of 3s each.",
+  "policy_sha256": "ecbc44b2b5912fe827bb10802a2683989f80fe8c47ec0fe35771a3b50c9aa8f4",
+  "hashes": {
+    "third_party/gpt-researcher/gpt_researcher/scraper/browser/browser.py": "47cac89f43f5e00dddd350789853ac9983b9a88392d2ac777e9976f497f38aaf",
+    "third_party/gpt-researcher/gpt_researcher/skills/deep_research.py": "b3de94c78efff5022ada0bf5f2c3966ed911e52606b466e11f724275a091188a",
+    "third_party/gpt-researcher/gpt_researcher/utils/workers.py": "6763a4a5ec8b776f28c4121697f9a0d8fafcea0beaa4ba987fbe8cad0ff9ddbe",
+    "third_party/gpt-researcher/gpt_researcher/scraper/browser/lifecycle.py": "487c60e9050545137c3980faf8605c4533cf0de6a545f4ca1432e2f06b4fb802",
+    "src/adr/orchestration/sequential.py": "6fbe234271912c554e0c4493208be967e11694d739d0a5ffd19d81bf12d4b0ac",
+    "src/adr/orchestration/recovery.py": "13d8601077a70a7ee408726288a2da429e81ad17f826b1dd533069bb3b0ad6ff",
+    "src/adr/orchestration/branch_budget.py": "ecbc44b2b5912fe827bb10802a2683989f80fe8c47ec0fe35771a3b50c9aa8f4",
+    "configs/agents/gpt_researcher_adaptive_depth_headless.yaml": "45e0bbf5bc051665886cf3dcb6a3ecf1134678ef0922a758b305e06b013e3c7d",
+    "scripts/restore_cl100k_cache.py": "c8f1ec66c2c32315d19f1d9910f3763a8a3020ea420f062d438ea881577d4b36",
+    "configs/adaptive_depth_sequential_51.yaml": "a614d5605195d11348972dc3548567f6d8b51d9df49da55495bf3e6ec62c5df2",
+    "configs/adaptive_depth_sequential_52.yaml": "a2671d60981d30aa1cf0c7326368d795216081b0c7d4c8c43f1943fac99dd103",
+    "configs/adaptive_depth_sequential_53.yaml": "02e4a0eb4939576367019edc6d282fd00557dc3372d35064d3f665b34fde17d0",
+    "configs/adaptive_depth_sequential_54.yaml": "e68a160f2f4877a4cf460cebd103f01e2a8d41131473c1345f901a909b83379a",
+    "configs/adaptive_depth_sequential_55.yaml": "65f6f3e56f4caeb5018d8fb7dd48e45acb1815336bf742297ed7d6afee0c0706",
+    "configs/adaptive_depth_sequential_quality.yaml": "3d900d673813bc2bfc1935cd3024733ce55d47c3f86b9bf46ca61a4081d3e82f",
+    "src/adr/orchestration/branch_analysis.py": "3cc1839de40221c85278b6071f7ca47a717057235f29da13d20068fe43f936e3",
+    "src/adr/orchestration/branch_metrics.py": "8972d45d8022fae1b065f2abc4f6f60b8322b9fb37b0ba99d9cc2dc93625dbb2",
+    "src/adr/agents/gpt_researcher.py": "b8bd45e226628a178f3ca108c6c8e5eb0a9bf6884c0caf9050b7bdb303a4b60e",
+    "third_party/gpt-researcher/gpt_researcher/utils/branch_expansion.py": "6464a464c2d7587479d488998f5f238c8136c6b58509f57bd8d4113c44902953",
+    "scripts/patches/gpt_researcher_branch_expansion.patch": "a432e9f70991e1d7df31d9227ccfb3c25af1b0d6bfee56b109bc70cffa18c6e6",
+    "tests/test_branch_budget.py": "4b59a8751739ec1d5beeb99d135b47ed189ac3fec84ef9c79344a5278df6faa2",
+    "configs/agents/gpt_researcher_adaptive_depth.yaml": "b8f0a8ed64b8f42c79b1c990c2e616ab85fb278c21021fe2bd1cef160a721854",
+    "configs/adaptive_depth_smoke.yaml": "4fa40e282a77c22fee91e7da22a2f998f9e5dbeeffa1731fecdd728a610b78f7",
+    "configs/adaptive_depth_evaluation.yaml": "5ab6917626ae2a7708717a775f4ea8fda8a86fee91076572ef2e9bf9a43e5c39",
+    "configs/adaptive_depth_quality.yaml": "2611f03bf25982e26bfc153332effca111df2b17abe218722b60af45e1952c01",
+    "tests/test_browser_headless.py": "813dc85930a7848aaf98677dfa4a610380789391e66b8fa8d7fbc1619ed43d3c",
+    "runs/adaptive-depth-development-v1/baseline_compatibility.json": "6aa3e65a8b8475449a0bb931d12be0be30c6f718e116b0f53ca48a840bc7a693",
+    "docs/adaptive_depth_reliability_v1.txt": "836fce2e290a11776603480e90dbce9f934ed1e2c2d5685bce19b1d69160c131",
+    "tests/test_browser_reliability.py": "3784c1b6842278d989aa18e4aae2904df09eb6b1048795f3d86dbd257823d455",
+    "tests/test_sequential_recovery.py": "6e9c77dfa884f3cd7293a9abb3b22d572181aa2a89acada66c2eb55712cd0e43",
+    "scripts/patches/gpt_researcher_browser_owned_cleanup_v1.patch": "43118b34c0a67c26f9e85e930a7cf56920ed03252b79292f6d33ba8ab3a77e51",
+    "src/adr/orchestration/diagnostics.py": "481ca33aa93272fa60ade8278765eedec171b9dd27fd589c679439b69dfd2313",
+    "tests/test_diagnostics_v2.py": "4dd0dcbc2a9e839a68515011cc7f4aa8f11406d18c1a1e0c35b0e007d21e516a",
+    "docs/adaptive_depth_diagnostics_v2.txt": "f3d16eae34608eaeefb997211bc07f0907568653a3a76cf6389f43520a297de0",
+    "scripts/patches/gpt_researcher_browser_diagnostics_v2.patch": "efee4783ef00e1892fdbfc67471fe063b12a162a0da6bce13ae29dbf36e677a9",
+    "configs/adaptive_depth_reliability_v1_before_diagnostics_v2.json": "eac0db8b0ceb5487f8792cd35d8aa651d7bf601172eb8c569cdd53db2aa3ac6f"
+  },
+  "patched_files": {
+    "third_party/gpt-researcher/gpt_researcher/scraper/browser/browser.py": {
+      "before_sha256": "127b73d62b15ce6827db8c39613cf9e06083ca92a5798bed4aff10fcb8d7676d",
+      "after_sha256": "47cac89f43f5e00dddd350789853ac9983b9a88392d2ac777e9976f497f38aaf"
+    },
+    "third_party/gpt-researcher/gpt_researcher/skills/deep_research.py": {
+      "before_sha256": "2182e78f7ad20acd9ca2747780c5242d09c6de5a7f4609331bfbf4a77119eabb",
+      "after_sha256": "b3de94c78efff5022ada0bf5f2c3966ed911e52606b466e11f724275a091188a"
+    },
+    "tests/test_browser_headless.py": {
+      "before_sha256": "e7b8f526661577fd084a81912dc3b41ed09e80b0bbaf9c260ab8016d7b7866ff",
+      "after_sha256": "813dc85930a7848aaf98677dfa4a610380789391e66b8fa8d7fbc1619ed43d3c"
+    }
+  },
+  "diagnostics_revision": "sequential-redacted-diagnostics-v2",
+  "audit_version": "retrieval-integrity-v2-query-id-scope",
+  "diagnostics_predecessor_manifest_sha256": "7218ee00126deabcfcc6e30fc4e9b846e2172670611b57ef8cca80d8dbb83a68"
+}

@@ -1,0 +1,141 @@
+diff --git a/gpt_researcher/skills/deep_research.py b/gpt_researcher/skills/deep_research.py
+--- a/gpt_researcher/skills/deep_research.py
++++ b/gpt_researcher/skills/deep_research.py
+@@ -1,4 +1,4 @@
+-from ..utils.query_gate import QueryGateError
++from ..utils.query_gate import QueryGateError, active_observation_v2, current_branch_v2
+ from typing import List, Dict, Any, Optional, Set
+ import asyncio
+ import logging
+@@ -519,6 +519,10 @@
+             }
+ 
+         # Process queries with concurrency limit
++        observer_v2 = active_observation_v2.get()
++        if observer_v2 is not None and self.concurrency_limit != 1:
++            raise QueryGateError('v2 observations require outer concurrency=1')
++        branch_ids_v2 = observer_v2.plan_round(serp_queries) if observer_v2 is not None else []
+         semaphore = asyncio.Semaphore(self.concurrency_limit)
+ 
+         async def process_query(serp_query: Dict[str, str]) -> Optional[Dict[str, Any]]:
+@@ -582,8 +586,25 @@
+                     return None
+ 
+         # Process queries concurrently with limit
+-        tasks = [process_query(query) for query in serp_queries]
+-        results = await asyncio.gather(*tasks)
++        if observer_v2 is not None:
++            # Wrap original operations: no extra research/result-processing calls.
++            async def observed_query(serp_query, bid):
++                observer_v2.start_branch(bid)
++                token = current_branch_v2.set(bid)
++                result = None
++                try:
++                    result = await process_query(serp_query)
++                    return result
++                finally:
++                    current_branch_v2.reset(token)
++                    observer_v2.finish_branch(bid, successful=result is not None)
++            # Outer concurrency is one, with explicitly stable planner ordering.
++            results = []
++            for q, bid in zip(serp_queries, branch_ids_v2):
++                results.append(await observed_query(q, bid))
++        else:
++            results = await asyncio.gather(*[process_query(q) for q in serp_queries])
++        publication_results_v2 = list(results)
+         results = [r for r in results if r is not None]
+ 
+         # Update breadth progress based on successful queries
+@@ -816,6 +837,10 @@
+             meta=decision_meta,
+         )
+ 
++        if observer_v2 is not None:
++            observer_v2.publish_round(branch_ids_v2, publication_results_v2,
++                                      self.trajectory_logger._global_evidence)
++
+         logger.info(
+             f"Round {round_id} checkpoint [{self.policy_name}]: depth={depth}, "
+             f"kept={len(kept_ids)}, pruned={len(pruned_ids)}, "
+diff --git a/gpt_researcher/skills/researcher.py b/gpt_researcher/skills/researcher.py
+--- a/gpt_researcher/skills/researcher.py
++++ b/gpt_researcher/skills/researcher.py
+@@ -1,4 +1,4 @@
+-from ..utils.query_gate import active_gate, QueryGateError, note_search, note_retrieval
++from ..utils.query_gate import active_gate, QueryGateError, note_search, note_retrieval, active_observation_v2, current_branch_v2
+ """Research conductor skill for GPT Researcher.
+ 
+ This module provides the ResearchConductor class that manages and
+@@ -385,15 +385,30 @@
+         # Using asyncio.gather to process the sub_queries asynchronously
+         try:
+             gate = active_gate.get()
+-            if gate is None:
+-                context = await asyncio.gather(
+-                    *[
+-                        self._process_sub_query(sub_query, scraped_data, query_domains)
+-                        for sub_query in sub_queries
+-                    ]
+-                )
+-            else:
+-                context = await gate.dispatch(self, sub_queries, scraped_data, query_domains)
++            observer_v2 = active_observation_v2.get()
++            if observer_v2 is not None:
++                if gate is not None and getattr(gate, 'observation_version', None) != 'mlp-observation-v2-findings':
++                    raise QueryGateError('Cannot feed observation v2 to a frozen v1 gate')
++                try:
++                    observer_v2.begin_batch(current_branch_v2.get(), sub_queries)
++                except Exception as exc:
++                    raise QueryGateError('v2 observation construction failed') from exc
++            try:
++                if gate is None:
++                    context = await asyncio.gather(
++                        *[
++                            self._process_sub_query(sub_query, scraped_data, query_domains)
++                            for sub_query in sub_queries
++                        ]
++                    )
++                else:
++                    context = await gate.dispatch(self, sub_queries, scraped_data, query_domains)
++            finally:
++                if observer_v2 is not None:
++                    try:
++                        observer_v2.end_batch()
++                    except Exception as exc:
++                        raise QueryGateError('v2 observation history commit failed') from exc
+             self.logger.info(f"Gathered context from {len(context)} sub-queries")
+             # Filter out empty results and join the context
+             context = [c for c in context if c]
+diff --git a/gpt_researcher/utils/query_gate.py b/gpt_researcher/utils/query_gate.py
+--- a/gpt_researcher/utils/query_gate.py
++++ b/gpt_researcher/utils/query_gate.py
+@@ -4,6 +4,9 @@
+ HOOK_VERSION = 1
+ active_gate = ContextVar('adr_inner_query_gate', default=None)
+ active_decision = ContextVar('adr_inner_query_decision', default=None)
++# Opt-in v2 ledger: never activated by the frozen v1 adapter.
++active_observation_v2 = ContextVar('adr_observation_v2', default=None)
++current_branch_v2 = ContextVar('adr_branch_v2', default=None)
+ 
+ 
+ class QueryGateError(RuntimeError):
+@@ -11,6 +14,9 @@
+ 
+ 
+ def note_search(query):
++    observer = active_observation_v2.get()
++    if observer is not None:
++        observer.note_search(query)
+     gate = active_gate.get()
+     if gate is not None:
+         gate.searches += 1
+@@ -19,6 +25,9 @@
+ 
+ 
+ def note_reads(count):
++    observer = active_observation_v2.get()
++    if observer is not None:
++        observer.reads += count
+     gate = active_gate.get()
+     if gate is not None:
+         gate.reads += count

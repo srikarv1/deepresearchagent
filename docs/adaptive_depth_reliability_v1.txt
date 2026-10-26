@@ -1,0 +1,47 @@
+Reliability-only revision: browser-owned-cleanup-v1
+
+Frozen hierarchy policy is unchanged. Chrome options, four scraper workers,
+provider, navigation (including Google cookie visit), extraction, prompts,
+models, budgets, ordering and result limits are unchanged. No scrolling deadline.
+
+Each Chrome Service has a local ownership watcher, recording PID plus process
+creation time for its process and descendants. Shutdown tries ordinary quit for
+10 seconds, then terminates only recorded/live owned processes, waits 3 seconds,
+and kills surviving owned processes with another 3-second wait. Cookie cleanup
+is unconditional. Nested scraper executors shut down after their research unit,
+including exceptions. psutil was already an installed fork dependency.
+
+Cleanup cannot survive an OS crash; descendants that disappear/reparent before
+ownership observation may evade discovery. Ownership errors and cleanup fallback
+are logged as safe markers and block automatic acceptance. No global process-name
+kill exists. A page that scrolls indefinitely may still hang: this revision does
+not impose a new page-content deadline or silently return partial content.
+
+Collection: python -m adr.orchestration.sequential collect
+Each accepted query runs in a new interpreter and exits before the next starts.
+There is exactly one attempt per unfinished query per invocation. Every proposed
+attempt is checkpointed before launch. Already accepted queries are hash-checked
+and skipped. Process IDs/start/end, classified console errors, run paths, integrity
+and accounting are persisted. Raw console/provider text is not saved because it
+may contain credentials. Known caught optional-MCP warning is ignored; provider,
+quota/authentication, browser and other errors stop the collection conservatively.
+
+After failure inspect collection.json and qNN/attempt-NNN/integrity.json. Resolve
+the operational cause first; --retry-failed creates a new attempt for that query
+and preserves all failures. It never chooses reports by quality. Following a
+machine crash, collection.lock deliberately remains: verify the recorded process
+has exited before manually removing that stale lock. Do not launch a second
+wrapper or blanket-kill Chrome. No stale-lock automatic deletion is implemented.
+
+Audit limitations: existing logs measure read attempts, not exact successful page
+counts; canonical retained evidence is reported independently. No error signals
+plus positive reads/evidence is an operational screening criterion, not proof that
+every source was retrieved successfully. No quality is judged between queries.
+
+Aggregation requires exactly one approved run for each of 51–55, intact checksums,
+matching reliability manifest, and a fresh output directory. No replacements or
+report selection based on RACE/FACT. Do not mix with prior confounded/interrupted
+runs. The aggregate reuses unmodified trajectory/report bytes and computes local
+metrics; judge only that five-report aggregate once, with confirmed GPT-5-mini
+RACE/FACT and Jina. Q/sec remains unresolved. One-query process boundaries are
+recorded as a reliability change, not hidden as an identical original execution.

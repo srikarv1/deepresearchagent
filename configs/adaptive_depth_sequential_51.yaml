@@ -1,0 +1,29 @@
+run_name: adaptive-depth-sequential-q51-v1
+output_dir: runs/adaptive-depth-sequential-reliability-v1/q51
+seed: 17
+concurrency: 1
+dataset:
+  name: deep_research_bench
+  language: en
+  limit: 1
+  query_ids:
+  - '51'
+agent:
+  name: gpt_researcher
+  config: configs/agents/gpt_researcher_adaptive_depth_headless.yaml
+llm:
+  provider: mock
+  model: unused
+search:
+  backend: mock
+  top_k: 5
+budget:
+  max_steps: 32
+  max_searches: 64
+  max_reads: 128
+  max_tokens: 400000
+  max_latency_s: 1200.0
+  max_evidence: 512
+  enforce: false
+eval:
+  official_benches: []

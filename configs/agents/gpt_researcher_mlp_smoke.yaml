@@ -1,0 +1,20 @@
+# One nonbenchmark smoke, explicitly opted in by adr.mlp.smoke --allow-api.
+name: gpt_researcher
+query_gate:
+  enabled: true
+  run: runs/mlp/baseline-v1-20260923T044920906450Z
+repo_path: null
+depth: 1
+breadth: 1
+concurrency: 1
+scraper: browser
+retriever: tavily
+max_search_results_per_query: 5
+max_scraper_workers: 4
+trajectory_dir: runs/_gpt_researcher_raw
+keep_trajectory_files: true
+env:
+  STRATEGIC_LLM: openai:gpt-5-mini
+  SMART_LLM: openai:gpt-5-mini
+  FAST_LLM: openai:gpt-5-mini
+  EMBEDDING: openai:text-embedding-3-small

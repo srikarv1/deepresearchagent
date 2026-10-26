@@ -1,0 +1,50 @@
+{
+  "baseline_decision": "always EXECUTE",
+  "baseline_observation_hooks": true,
+  "budget_enforcement": false,
+  "calibration": "runs/redundancy-calibration-v1/summary.json",
+  "caveats": [
+    "No live smoke executed",
+    "Zero pruning on 336 original development candidates",
+    "Known digital-divide and sleep-timing SKIPs missed",
+    "One weak archaeological packet predicted SKIP; not a gold-labeled success",
+    "Uncertainty fail-open counts include ordinary below-threshold EXECUTEs"
+  ],
+  "context_budget_nominal": 50000,
+  "evaluation_ids_only": [
+    "52",
+    "53",
+    "54",
+    "55"
+  ],
+  "held_out_content_inspected": false,
+  "judges": "not automatically run; existing adr evaluate path only",
+  "moderate_policy": null,
+  "policies": [
+    "always_execute",
+    "conservative"
+  ],
+  "sha256": {
+    "configs/agents/gpt_researcher_redundancy_baseline.yaml": "b98e4dece89024b54c88382f6bf2fb4d0e2205a30f782c1dcc0fc6aa0b221e0b",
+    "configs/agents/gpt_researcher_redundancy_conservative.yaml": "1e6f1d0d29e8b62ebcd51ae40eba99a8cd2ce54aa6e47ffc7d9af3888ffd4164",
+    "configs/redundancy_baseline_evaluation.yaml": "ff820a8f9f2c2fae15e15af328e8592f75222495bdbe7daa28d7d81c15933981",
+    "configs/redundancy_conservative_evaluation.yaml": "6dff7097ccdcbb5d1061f9e4ba9ad8ddb88953efcea4f8017e161a5ffd55d1b4",
+    "configs/redundancy_smoke.yaml": "ca447e281049d7a108c6e93f4fa08c70209bd1e0c91de9078a4db8ba74188657",
+    "data/development/redundancy-smoke-v1.jsonl": "479276f4245bd7e0878c3b0e5521eb19326fe81cbef86727d632ce6fe2f88e43",
+    "src/adr/agents/gpt_researcher.py": "014060fa9f02048d61f60b003c7bb45eeb60bf63cc29d742697d8321ee253dfa",
+    "src/adr/development/trace.py": "65bcf5cd964d6c2653585c9046cc717c21c92876ed39171c76c6e44d581f4f68",
+    "src/adr/mlp/branch_observation_v2.py": "fe0491e57895650777ea77931bc516a5873dc470655569102aaf9093fbde17dd",
+    "src/adr/orchestration/__init__.py": "c55cfe385013f3fb293d59bb1652e7b2bbeee16e9d0fadc43b5d79c96e3a3584",
+    "src/adr/orchestration/calibrate.py": "f9519192d0edeef1754de27aa42efaf07936e0de35b74ee6b77df049cca7c1ba",
+    "src/adr/orchestration/live.py": "3210f3d92c6823add68c2251b20ed124f3b23908f1d02108047af39c5b744174",
+    "src/adr/orchestration/metrics.py": "8a045cc0f732798f18e31729ed7cddd203ef9758c4d0d92afe92a9960cb1b707",
+    "src/adr/orchestration/redundancy.py": "84e5d88ba7f28b942d081f487920b719cfda9d63e98c5cbe8a6f990bafc39aef",
+    "tests/test_redundancy.py": "c0a4cde22671ba1ac122426199b06785a126f0b1a482e758a3dae1ebdc45225d",
+    "third_party/gpt-researcher/gpt_researcher/skills/deep_research.py": "af1ae3eec8a0100a19081c3a445a767671dea9d8ab0e2ba7fec883609f3f3f2d",
+    "third_party/gpt-researcher/gpt_researcher/skills/researcher.py": "a18deecc8505da490755296c725ebc6473cdf9ee80dc5f71079f458469b2aee5",
+    "third_party/gpt-researcher/gpt_researcher/utils/query_gate.py": "14af8997045ac81e244554383af6cafb2dea37721446278416c6e93dd278aea2"
+  },
+  "status": "frozen_before_evaluation",
+  "threshold": 0.22,
+  "version": "lexical-redundancy-single-statement-v1"
+}

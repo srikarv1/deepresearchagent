@@ -1,0 +1,833 @@
+{
+  "original_question": "What published evidence supports replacing conventional lamps with LEDs in a community workshop?",
+  "states": [
+    {
+      "state_id": "s1",
+      "current_branch_id": "b0",
+      "branches": [
+        {
+          "id": "b0",
+          "goal": "Establish LED power use and startup delay",
+          "status": "active"
+        },
+        {
+          "id": "b1",
+          "goal": "Find independent long-term tests for lighting need 1",
+          "status": "open"
+        },
+        {
+          "id": "b2",
+          "goal": "Find independent long-term tests for lighting need 2",
+          "status": "open"
+        },
+        {
+          "id": "b3",
+          "goal": "Find independent long-term tests for lighting need 3",
+          "status": "open"
+        },
+        {
+          "id": "b4",
+          "goal": "Find independent long-term tests for lighting need 4",
+          "status": "open"
+        }
+      ],
+      "publications_before": [],
+      "usage": {
+        "used_searches": 0,
+        "used_reads": 0,
+        "used_tokens": 0
+      },
+      "candidates": [
+        {
+          "candidate_id": "c1",
+          "candidate_subquery": "Find published comparisons of LED and conventional lamp power use.",
+          "label": "EXECUTE",
+          "decision_category": "unanswered_information_need",
+          "reason": "This information need remains unanswered in the visible observation.",
+          "counterfactual_pair_id": "pair1",
+          "supporting_finding": null
+        },
+        {
+          "candidate_id": "c2",
+          "candidate_subquery": "Find published measurements of LED lamp startup delay.",
+          "label": "EXECUTE",
+          "decision_category": "unanswered_information_need",
+          "reason": "This information need remains unanswered in the visible observation.",
+          "counterfactual_pair_id": "pair2",
+          "supporting_finding": null
+        },
+        {
+          "candidate_id": "c3",
+          "candidate_subquery": "Find published measurements of workshop lighting need 0 under operating condition 2.",
+          "label": "EXECUTE",
+          "decision_category": "unanswered_information_need",
+          "reason": "This information need remains unanswered in the visible observation.",
+          "counterfactual_pair_id": null,
+          "supporting_finding": null
+        }
+      ],
+      "visible_findings": []
+    },
+    {
+      "state_id": "s2",
+      "current_branch_id": "b1",
+      "branches": [
+        {
+          "id": "b0",
+          "goal": "Establish LED power use and startup delay",
+          "status": "done"
+        },
+        {
+          "id": "b1",
+          "goal": "Find independent long-term tests for lighting need 1",
+          "status": "active"
+        },
+        {
+          "id": "b2",
+          "goal": "Find independent long-term tests for lighting need 2",
+          "status": "open"
+        },
+        {
+          "id": "b3",
+          "goal": "Find independent long-term tests for lighting need 3",
+          "status": "open"
+        },
+        {
+          "id": "b4",
+          "goal": "Find independent long-term tests for lighting need 4",
+          "status": "open"
+        },
+        {
+          "id": "b5",
+          "goal": "Find independent long-term tests for lighting need 5",
+          "status": "open"
+        }
+      ],
+      "publications_before": [
+        {
+          "results": [
+            {
+              "goal": "Establish LED power use and startup delay",
+              "findings": [
+                "Published measurements establish lower LED power use.",
+                "Bench measurements show immediate LED startup in the tested workshop fixtures."
+              ],
+              "followups": [
+                "Find independent long-term tests for lighting need 1."
+              ],
+              "branch_id": "b0"
+            }
+          ],
+          "evidence": [
+            {
+              "id": "e0",
+              "url": "url-sha256:0000000000000000000000000000000000000000000000000000000000000000",
+              "text": "Laboratory lighting measurements report power use and startup tests; longer-duration durability remains uncertain."
+            }
+          ]
+        }
+      ],
+      "usage": {
+        "used_searches": 10,
+        "used_reads": 20,
+        "used_tokens": 65000
+      },
+      "candidates": [
+        {
+          "candidate_id": "c1",
+          "candidate_subquery": "Find published comparisons of LED and conventional lamp power use.",
+          "label": "SKIP",
+          "decision_category": "already_established",
+          "reason": "Visible measurements answer this comparison for the tested fixtures.",
+          "counterfactual_pair_id": "pair1",
+          "supporting_finding": "Published measurements establish lower LED power use."
+        },
+        {
+          "candidate_id": "c2",
+          "candidate_subquery": "Find published measurements of LED lamp startup delay.",
+          "label": "SKIP",
+          "decision_category": "already_established",
+          "reason": "Visible measurements answer this comparison for the tested fixtures.",
+          "counterfactual_pair_id": "pair2",
+          "supporting_finding": "Bench measurements show immediate LED startup in the tested workshop fixtures."
+        },
+        {
+          "candidate_id": "c3",
+          "candidate_subquery": "Find published measurements of workshop lighting need 1 under operating condition 2.",
+          "label": "EXECUTE",
+          "decision_category": "unanswered_information_need",
+          "reason": "This information need remains unanswered in the visible observation.",
+          "counterfactual_pair_id": null,
+          "supporting_finding": null
+        }
+      ],
+      "visible_findings": [
+        "Published measurements establish lower LED power use.",
+        "Bench measurements show immediate LED startup in the tested workshop fixtures."
+      ]
+    },
+    {
+      "state_id": "s3",
+      "current_branch_id": "b2",
+      "branches": [
+        {
+          "id": "b0",
+          "goal": "Establish LED power use and startup delay",
+          "status": "done"
+        },
+        {
+          "id": "b1",
+          "goal": "Find independent long-term tests for lighting need 1",
+          "status": "done"
+        },
+        {
+          "id": "b2",
+          "goal": "Find independent long-term tests for lighting need 2",
+          "status": "active"
+        },
+        {
+          "id": "b3",
+          "goal": "Find independent long-term tests for lighting need 3",
+          "status": "open"
+        },
+        {
+          "id": "b4",
+          "goal": "Find independent long-term tests for lighting need 4",
+          "status": "open"
+        },
+        {
+          "id": "b5",
+          "goal": "Find independent long-term tests for lighting need 5",
+          "status": "open"
+        },
+        {
+          "id": "b6",
+          "goal": "Find independent long-term tests for lighting need 6",
+          "status": "open"
+        }
+      ],
+      "publications_before": [
+        {
+          "results": [
+            {
+              "goal": "Find independent long-term tests for lighting need 1",
+              "findings": [
+                "Published tests partially address lighting need 1."
+              ],
+              "followups": [
+                "Find independent long-term tests for lighting need 2."
+              ],
+              "branch_id": "b1"
+            }
+          ],
+          "evidence": [
+            {
+              "id": "e1",
+              "url": "url-sha256:0000000000000000000000000000000000000000000000000000000000000001",
+              "text": "Laboratory lighting measurements report power use and startup tests; longer-duration durability remains uncertain."
+            }
+          ]
+        }
+      ],
+      "usage": {
+        "used_searches": 20,
+        "used_reads": 40,
+        "used_tokens": 130000
+      },
+      "candidates": [
+        {
+          "candidate_id": "c1",
+          "candidate_subquery": "Find published measurements of workshop lighting need 2 under operating condition 0.",
+          "label": "EXECUTE",
+          "decision_category": "unanswered_information_need",
+          "reason": "This information need remains unanswered in the visible observation.",
+          "counterfactual_pair_id": null,
+          "supporting_finding": null
+        },
+        {
+          "candidate_id": "c2",
+          "candidate_subquery": "Find published measurements of workshop lighting need 2 under operating condition 1.",
+          "label": "EXECUTE",
+          "decision_category": "unanswered_information_need",
+          "reason": "This information need remains unanswered in the visible observation.",
+          "counterfactual_pair_id": null,
+          "supporting_finding": null
+        },
+        {
+          "candidate_id": "c3",
+          "candidate_subquery": "Find published measurements of workshop lighting need 2 under operating condition 2.",
+          "label": "EXECUTE",
+          "decision_category": "unanswered_information_need",
+          "reason": "This information need remains unanswered in the visible observation.",
+          "counterfactual_pair_id": null,
+          "supporting_finding": null
+        }
+      ],
+      "visible_findings": [
+        "Published measurements establish lower LED power use.",
+        "Bench measurements show immediate LED startup in the tested workshop fixtures.",
+        "Published tests partially address lighting need 1."
+      ]
+    },
+    {
+      "state_id": "s4",
+      "current_branch_id": "b3",
+      "branches": [
+        {
+          "id": "b0",
+          "goal": "Establish LED power use and startup delay",
+          "status": "done"
+        },
+        {
+          "id": "b1",
+          "goal": "Find independent long-term tests for lighting need 1",
+          "status": "done"
+        },
+        {
+          "id": "b2",
+          "goal": "Find independent long-term tests for lighting need 2",
+          "status": "done"
+        },
+        {
+          "id": "b3",
+          "goal": "Find independent long-term tests for lighting need 3",
+          "status": "active"
+        },
+        {
+          "id": "b4",
+          "goal": "Find independent long-term tests for lighting need 4",
+          "status": "open"
+        },
+        {
+          "id": "b5",
+          "goal": "Find independent long-term tests for lighting need 5",
+          "status": "open"
+        },
+        {
+          "id": "b6",
+          "goal": "Find independent long-term tests for lighting need 6",
+          "status": "open"
+        },
+        {
+          "id": "b7",
+          "goal": "Find independent long-term tests for lighting need 7",
+          "status": "open"
+        }
+      ],
+      "publications_before": [
+        {
+          "results": [
+            {
+              "goal": "Find independent long-term tests for lighting need 2",
+              "findings": [
+                "Published tests partially address lighting need 2."
+              ],
+              "followups": [
+                "Find independent long-term tests for lighting need 3."
+              ],
+              "branch_id": "b2"
+            }
+          ],
+          "evidence": [
+            {
+              "id": "e2",
+              "url": "url-sha256:0000000000000000000000000000000000000000000000000000000000000002",
+              "text": "Laboratory lighting measurements report power use and startup tests; longer-duration durability remains uncertain."
+            }
+          ]
+        }
+      ],
+      "usage": {
+        "used_searches": 30,
+        "used_reads": 60,
+        "used_tokens": 195000
+      },
+      "candidates": [
+        {
+          "candidate_id": "c1",
+          "candidate_subquery": "Find published measurements of workshop lighting need 3 under operating condition 0.",
+          "label": "EXECUTE",
+          "decision_category": "unanswered_information_need",
+          "reason": "This information need remains unanswered in the visible observation.",
+          "counterfactual_pair_id": null,
+          "supporting_finding": null
+        },
+        {
+          "candidate_id": "c2",
+          "candidate_subquery": "Find published measurements of workshop lighting need 3 under operating condition 1.",
+          "label": "EXECUTE",
+          "decision_category": "unanswered_information_need",
+          "reason": "This information need remains unanswered in the visible observation.",
+          "counterfactual_pair_id": null,
+          "supporting_finding": null
+        },
+        {
+          "candidate_id": "c3",
+          "candidate_subquery": "Find published measurements of workshop lighting need 3 under operating condition 2.",
+          "label": "EXECUTE",
+          "decision_category": "unanswered_information_need",
+          "reason": "This information need remains unanswered in the visible observation.",
+          "counterfactual_pair_id": null,
+          "supporting_finding": null
+        }
+      ],
+      "visible_findings": [
+        "Published measurements establish lower LED power use.",
+        "Bench measurements show immediate LED startup in the tested workshop fixtures.",
+        "Published tests partially address lighting need 1.",
+        "Published tests partially address lighting need 2."
+      ]
+    },
+    {
+      "state_id": "s5",
+      "current_branch_id": "b4",
+      "branches": [
+        {
+          "id": "b0",
+          "goal": "Establish LED power use and startup delay",
+          "status": "done"
+        },
+        {
+          "id": "b1",
+          "goal": "Find independent long-term tests for lighting need 1",
+          "status": "done"
+        },
+        {
+          "id": "b2",
+          "goal": "Find independent long-term tests for lighting need 2",
+          "status": "done"
+        },
+        {
+          "id": "b3",
+          "goal": "Find independent long-term tests for lighting need 3",
+          "status": "done"
+        },
+        {
+          "id": "b4",
+          "goal": "Find independent long-term tests for lighting need 4",
+          "status": "active"
+        },
+        {
+          "id": "b5",
+          "goal": "Find independent long-term tests for lighting need 5",
+          "status": "open"
+        },
+        {
+          "id": "b6",
+          "goal": "Find independent long-term tests for lighting need 6",
+          "status": "open"
+        },
+        {
+          "id": "b7",
+          "goal": "Find independent long-term tests for lighting need 7",
+          "status": "open"
+        },
+        {
+          "id": "b8",
+          "goal": "Find independent long-term tests for lighting need 8",
+          "status": "open"
+        }
+      ],
+      "publications_before": [
+        {
+          "results": [
+            {
+              "goal": "Find independent long-term tests for lighting need 3",
+              "findings": [
+                "Published tests partially address lighting need 3."
+              ],
+              "followups": [
+                "Find independent long-term tests for lighting need 4."
+              ],
+              "branch_id": "b3"
+            }
+          ],
+          "evidence": [
+            {
+              "id": "e3",
+              "url": "url-sha256:0000000000000000000000000000000000000000000000000000000000000003",
+              "text": "Laboratory lighting measurements report power use and startup tests; longer-duration durability remains uncertain."
+            }
+          ]
+        }
+      ],
+      "usage": {
+        "used_searches": 40,
+        "used_reads": 80,
+        "used_tokens": 260000
+      },
+      "candidates": [
+        {
+          "candidate_id": "c1",
+          "candidate_subquery": "Find published measurements of workshop lighting need 4 under operating condition 0.",
+          "label": "EXECUTE",
+          "decision_category": "unanswered_information_need",
+          "reason": "This information need remains unanswered in the visible observation.",
+          "counterfactual_pair_id": null,
+          "supporting_finding": null
+        },
+        {
+          "candidate_id": "c2",
+          "candidate_subquery": "Find published measurements of workshop lighting need 4 under operating condition 1.",
+          "label": "EXECUTE",
+          "decision_category": "unanswered_information_need",
+          "reason": "This information need remains unanswered in the visible observation.",
+          "counterfactual_pair_id": null,
+          "supporting_finding": null
+        }
+      ],
+      "visible_findings": [
+        "Published measurements establish lower LED power use.",
+        "Bench measurements show immediate LED startup in the tested workshop fixtures.",
+        "Published tests partially address lighting need 1.",
+        "Published tests partially address lighting need 2.",
+        "Published tests partially address lighting need 3."
+      ]
+    },
+    {
+      "state_id": "s6",
+      "current_branch_id": "b5",
+      "branches": [
+        {
+          "id": "b0",
+          "goal": "Establish LED power use and startup delay",
+          "status": "done"
+        },
+        {
+          "id": "b1",
+          "goal": "Find independent long-term tests for lighting need 1",
+          "status": "done"
+        },
+        {
+          "id": "b2",
+          "goal": "Find independent long-term tests for lighting need 2",
+          "status": "done"
+        },
+        {
+          "id": "b3",
+          "goal": "Find independent long-term tests for lighting need 3",
+          "status": "done"
+        },
+        {
+          "id": "b4",
+          "goal": "Find independent long-term tests for lighting need 4",
+          "status": "done"
+        },
+        {
+          "id": "b5",
+          "goal": "Find independent long-term tests for lighting need 5",
+          "status": "active"
+        },
+        {
+          "id": "b6",
+          "goal": "Find independent long-term tests for lighting need 6",
+          "status": "open"
+        },
+        {
+          "id": "b7",
+          "goal": "Find independent long-term tests for lighting need 7",
+          "status": "open"
+        },
+        {
+          "id": "b8",
+          "goal": "Find independent long-term tests for lighting need 8",
+          "status": "open"
+        },
+        {
+          "id": "b9",
+          "goal": "Find independent long-term tests for lighting need 9",
+          "status": "open"
+        }
+      ],
+      "publications_before": [
+        {
+          "results": [
+            {
+              "goal": "Find independent long-term tests for lighting need 4",
+              "findings": [
+                "Published tests partially address lighting need 4."
+              ],
+              "followups": [
+                "Find independent long-term tests for lighting need 5."
+              ],
+              "branch_id": "b4"
+            }
+          ],
+          "evidence": [
+            {
+              "id": "e4",
+              "url": "url-sha256:0000000000000000000000000000000000000000000000000000000000000004",
+              "text": "Laboratory lighting measurements report power use and startup tests; longer-duration durability remains uncertain."
+            }
+          ]
+        }
+      ],
+      "usage": {
+        "used_searches": 50,
+        "used_reads": 100,
+        "used_tokens": 325000
+      },
+      "candidates": [
+        {
+          "candidate_id": "c1",
+          "candidate_subquery": "Find published measurements of workshop lighting need 5 under operating condition 0.",
+          "label": "EXECUTE",
+          "decision_category": "unanswered_information_need",
+          "reason": "This information need remains unanswered in the visible observation.",
+          "counterfactual_pair_id": null,
+          "supporting_finding": null
+        },
+        {
+          "candidate_id": "c2",
+          "candidate_subquery": "Find published measurements of workshop lighting need 5 under operating condition 1.",
+          "label": "EXECUTE",
+          "decision_category": "unanswered_information_need",
+          "reason": "This information need remains unanswered in the visible observation.",
+          "counterfactual_pair_id": null,
+          "supporting_finding": null
+        }
+      ],
+      "visible_findings": [
+        "Published tests partially address lighting need 1.",
+        "Published tests partially address lighting need 2.",
+        "Published tests partially address lighting need 3.",
+        "Published tests partially address lighting need 4."
+      ]
+    },
+    {
+      "state_id": "s7",
+      "current_branch_id": "b6",
+      "branches": [
+        {
+          "id": "b0",
+          "goal": "Establish LED power use and startup delay",
+          "status": "done"
+        },
+        {
+          "id": "b1",
+          "goal": "Find independent long-term tests for lighting need 1",
+          "status": "done"
+        },
+        {
+          "id": "b2",
+          "goal": "Find independent long-term tests for lighting need 2",
+          "status": "done"
+        },
+        {
+          "id": "b3",
+          "goal": "Find independent long-term tests for lighting need 3",
+          "status": "done"
+        },
+        {
+          "id": "b4",
+          "goal": "Find independent long-term tests for lighting need 4",
+          "status": "done"
+        },
+        {
+          "id": "b5",
+          "goal": "Find independent long-term tests for lighting need 5",
+          "status": "done"
+        },
+        {
+          "id": "b6",
+          "goal": "Find independent long-term tests for lighting need 6",
+          "status": "active"
+        },
+        {
+          "id": "b7",
+          "goal": "Find independent long-term tests for lighting need 7",
+          "status": "open"
+        },
+        {
+          "id": "b8",
+          "goal": "Find independent long-term tests for lighting need 8",
+          "status": "open"
+        },
+        {
+          "id": "b9",
+          "goal": "Find independent long-term tests for lighting need 9",
+          "status": "open"
+        },
+        {
+          "id": "b10",
+          "goal": "Find independent long-term tests for lighting need 10",
+          "status": "open"
+        }
+      ],
+      "publications_before": [
+        {
+          "results": [
+            {
+              "goal": "Find independent long-term tests for lighting need 5",
+              "findings": [
+                "Published tests partially address lighting need 5."
+              ],
+              "followups": [
+                "Find independent long-term tests for lighting need 6."
+              ],
+              "branch_id": "b5"
+            }
+          ],
+          "evidence": [
+            {
+              "id": "e5",
+              "url": "url-sha256:0000000000000000000000000000000000000000000000000000000000000005",
+              "text": "Laboratory lighting measurements report power use and startup tests; longer-duration durability remains uncertain."
+            }
+          ]
+        }
+      ],
+      "usage": {
+        "used_searches": 60,
+        "used_reads": 120,
+        "used_tokens": 390000
+      },
+      "candidates": [
+        {
+          "candidate_id": "c1",
+          "candidate_subquery": "Find published measurements of workshop lighting need 6 under operating condition 0.",
+          "label": "EXECUTE",
+          "decision_category": "unanswered_information_need",
+          "reason": "This information need remains unanswered in the visible observation.",
+          "counterfactual_pair_id": null,
+          "supporting_finding": null
+        },
+        {
+          "candidate_id": "c2",
+          "candidate_subquery": "Find published measurements of workshop lighting need 6 under operating condition 1.",
+          "label": "EXECUTE",
+          "decision_category": "unanswered_information_need",
+          "reason": "This information need remains unanswered in the visible observation.",
+          "counterfactual_pair_id": null,
+          "supporting_finding": null
+        }
+      ],
+      "visible_findings": [
+        "Published tests partially address lighting need 2.",
+        "Published tests partially address lighting need 3.",
+        "Published tests partially address lighting need 4.",
+        "Published tests partially address lighting need 5."
+      ]
+    },
+    {
+      "state_id": "s8",
+      "current_branch_id": "b7",
+      "branches": [
+        {
+          "id": "b0",
+          "goal": "Establish LED power use and startup delay",
+          "status": "done"
+        },
+        {
+          "id": "b1",
+          "goal": "Find independent long-term tests for lighting need 1",
+          "status": "done"
+        },
+        {
+          "id": "b2",
+          "goal": "Find independent long-term tests for lighting need 2",
+          "status": "done"
+        },
+        {
+          "id": "b3",
+          "goal": "Find independent long-term tests for lighting need 3",
+          "status": "done"
+        },
+        {
+          "id": "b4",
+          "goal": "Find independent long-term tests for lighting need 4",
+          "status": "done"
+        },
+        {
+          "id": "b5",
+          "goal": "Find independent long-term tests for lighting need 5",
+          "status": "done"
+        },
+        {
+          "id": "b6",
+          "goal": "Find independent long-term tests for lighting need 6",
+          "status": "done"
+        },
+        {
+          "id": "b7",
+          "goal": "Find independent long-term tests for lighting need 7",
+          "status": "active"
+        },
+        {
+          "id": "b8",
+          "goal": "Find independent long-term tests for lighting need 8",
+          "status": "open"
+        },
+        {
+          "id": "b9",
+          "goal": "Find independent long-term tests for lighting need 9",
+          "status": "open"
+        },
+        {
+          "id": "b10",
+          "goal": "Find independent long-term tests for lighting need 10",
+          "status": "open"
+        },
+        {
+          "id": "b11",
+          "goal": "Find independent long-term tests for lighting need 11",
+          "status": "open"
+        }
+      ],
+      "publications_before": [
+        {
+          "results": [
+            {
+              "goal": "Find independent long-term tests for lighting need 6",
+              "findings": [
+                "Published tests partially address lighting need 6."
+              ],
+              "followups": [
+                "Find independent long-term tests for lighting need 7."
+              ],
+              "branch_id": "b6"
+            }
+          ],
+          "evidence": [
+            {
+              "id": "e6",
+              "url": "url-sha256:0000000000000000000000000000000000000000000000000000000000000006",
+              "text": "Laboratory lighting measurements report power use and startup tests; longer-duration durability remains uncertain."
+            }
+          ]
+        }
+      ],
+      "usage": {
+        "used_searches": 70,
+        "used_reads": 140,
+        "used_tokens": 455000
+      },
+      "candidates": [
+        {
+          "candidate_id": "c1",
+          "candidate_subquery": "Find published measurements of workshop lighting need 7 under operating condition 0.",
+          "label": "EXECUTE",
+          "decision_category": "unanswered_information_need",
+          "reason": "This information need remains unanswered in the visible observation.",
+          "counterfactual_pair_id": null,
+          "supporting_finding": null
+        },
+        {
+          "candidate_id": "c2",
+          "candidate_subquery": "Find published measurements of workshop lighting need 7 under operating condition 1.",
+          "label": "EXECUTE",
+          "decision_category": "unanswered_information_need",
+          "reason": "This information need remains unanswered in the visible observation.",
+          "counterfactual_pair_id": null,
+          "supporting_finding": null
+        }
+      ],
+      "visible_findings": [
+        "Published tests partially address lighting need 3.",
+        "Published tests partially address lighting need 4.",
+        "Published tests partially address lighting need 5.",
+        "Published tests partially address lighting need 6."
+      ]
+    }
+  ]
+}

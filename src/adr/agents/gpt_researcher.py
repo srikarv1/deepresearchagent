@@ -147,6 +147,33 @@ class GPTResearcherAgent:
 
     # ── run ───────────────────────────────────────────────────────
     async def run(self, task: ResearchTask, ctx: AgentContext) -> Trajectory:
+        if (self.config.get("query_gate") or {}).get("enabled", False):
+            if int(((ctx.extra or {}).get("config") or {}).get("concurrency", 1)) != 1:
+                raise ValueError("Query gating requires harness concurrency=1 for global GR trackers")
+        development = bool((self.config.get("development_trace") or {}).get("enabled", False))
+        if development:
+            if task.query.dataset != "development" or (self.config.get("query_gate") or {}).get("enabled", False):
+                raise ValueError("Development trace requires a development query and disabled query gate")
+            if int(((ctx.extra or {}).get("config") or {}).get("concurrency", 1)) != 1:
+                raise ValueError("Development tracing requires harness concurrency=1 for global trackers")
+        expansion_config = self.config.get("branch_expansion")
+        if expansion_config is not None:
+            from adr.orchestration.branch_budget import VERSION as expansion_version
+            if expansion_config.get("policy") != expansion_version:
+                raise ValueError("Unknown frozen branch-expansion policy")
+            if development or self.config.get("redundancy_gate") is not None or (self.config.get("query_gate") or {}).get("enabled", False):
+                raise ValueError("Branch expansion must not combine with query gating/development logging")
+            if int(((ctx.extra or {}).get("config") or {}).get("concurrency", 1)) != 1:
+                raise ValueError("Branch expansion requires harness concurrency=1")
+        redundancy_config = self.config.get("redundancy_gate")
+        if redundancy_config is not None:
+            from adr.orchestration.redundancy import POLICIES
+            if redundancy_config.get("policy") not in POLICIES:
+                raise ValueError("Unknown frozen redundancy policy")
+            if development or (self.config.get("query_gate") or {}).get("enabled", False):
+                raise ValueError("Redundancy baseline cannot be combined with an MLP/development logger")
+            if int(((ctx.extra or {}).get("config") or {}).get("concurrency", 1)) != 1:
+                raise ValueError("Redundancy baseline requires harness concurrency=1")
         GPTResearcher, TokenTracker, LatencyTracker = self._modules()
 
         # gpt-researcher's trackers are process-global; the harness runs queries
@@ -160,7 +187,145 @@ class GPTResearcherAgent:
         # that template only in write_report.
         researcher = GPTResearcher(query=task.query.text, report_type="deep")
         t0 = time.perf_counter()
-        await researcher.conduct_research()
+        gate_config = self.config.get("query_gate") or {}
+        if expansion_config is not None:
+            from adr.orchestration.branch_budget import BranchTrace, BranchExpansion, VERSION as expansion_version
+            hooks = importlib.import_module("gpt_researcher.utils.query_gate")
+            expansion_hooks = importlib.import_module("gpt_researcher.utils.branch_expansion")
+            if expansion_hooks.HOOK_VERSION != 1 or researcher.deep_researcher.concurrency_limit != 1:
+                raise ValueError("Branch policy requires its hook and outer concurrency=1")
+            if researcher.deep_researcher.depth != 3 or researcher.deep_researcher.breadth != 4:
+                raise ValueError("Frozen branch policy requires depth=3 breadth=4")
+            root = (ctx.extra or {}).get("run_dir")
+            if not root:
+                raise ValueError("Branch policy requires run_dir")
+            import hashlib
+            safe_id = hashlib.sha256(task.query.id.encode()).hexdigest()[:16]
+            trace = BranchTrace(Path(root)/"branch_expansion"/f"{safe_id}.jsonl",
+                task.query.text, ((ctx.extra or {}).get("config") or {}).get("budget", {}),
+                TokenTracker, LatencyTracker, hooks.study_candidate_id,
+                policy=expansion_version,evaluation=task.query.dataset != "development")
+            expansion = BranchExpansion(trace)
+            trace_token = hooks.active_trace.set(trace)
+            expansion_token = expansion_hooks.active_expansion.set(expansion)
+            status = "failed"
+            try:
+                await researcher.conduct_research()
+                status = "research_completed"
+            finally:
+                expansion_hooks.active_expansion.reset(expansion_token)
+                hooks.active_trace.reset(trace_token)
+                trace.close(status)
+                self._fill_meter(ctx, TokenTracker, LatencyTracker, n_fetches=trace.reads)
+                meter = (ctx.extra or {}).get("meter")
+                if meter is not None:
+                    meter.n_search_calls = trace.searches
+                ctx.extra["partial_research_accounting"] = trace.accounting()
+        elif redundancy_config is not None:
+            from adr.orchestration.live import PublicationTrace, RedundancyGate
+            hooks = importlib.import_module("gpt_researcher.utils.query_gate")
+            if hooks.HOOK_VERSION != 1 or researcher.deep_researcher.concurrency_limit != 1:
+                raise ValueError("Redundancy gate requires v1 hooks and outer concurrency=1")
+            if researcher.mcp_configs or researcher.vector_store or researcher.source_urls or any("mcpretriever" in r.__name__.lower() for r in researcher.retrievers):
+                raise ValueError("Redundancy baseline supports the standard web research path only")
+            root = (ctx.extra or {}).get("run_dir")
+            if not root:
+                raise ValueError("Redundancy baseline requires run_dir")
+            import hashlib
+            safe_id = hashlib.sha256(task.query.id.encode()).hexdigest()[:16]
+            trace = PublicationTrace(Path(root)/"redundancy_gate"/f"{safe_id}.jsonl",
+                task.query.text, ((ctx.extra or {}).get("config") or {}).get("budget", {}),
+                TokenTracker, LatencyTracker, hooks.study_candidate_id,
+                policy=redundancy_config["policy"], evaluation=task.query.dataset != "development")
+            gate = RedundancyGate(trace, hooks, redundancy_config["policy"])
+            trace_token = hooks.active_trace.set(trace)
+            gate_token = hooks.active_gate.set(gate)
+            status = "failed"
+            try:
+                await researcher.conduct_research()
+                status = "research_completed"
+            finally:
+                hooks.active_gate.reset(gate_token)
+                hooks.active_trace.reset(trace_token)
+                trace.close(status)
+                self._fill_meter(ctx, TokenTracker, LatencyTracker, n_fetches=trace.reads)
+                meter = (ctx.extra or {}).get("meter")
+                if meter is not None:
+                    meter.n_search_calls = trace.searches
+                ctx.extra["partial_research_accounting"] = trace.accounting()
+        elif gate_config.get("enabled", False):
+            # Lazy: the ordinary path imports neither Torch nor an embedding client.
+            from adr.mlp.inference import FrozenMLP, DEFAULT_RUN
+            from adr.mlp.query_gate import QueryGate
+            hooks = importlib.import_module("gpt_researcher.utils.query_gate")
+            if hooks.HOOK_VERSION != 1:
+                raise RuntimeError("Incompatible GPT Researcher query-gate hooks")
+            if researcher.deep_researcher.concurrency_limit != 1:
+                raise ValueError("Query gating requires outer DEEP_RESEARCH_CONCURRENCY=1")
+            if researcher.mcp_configs or researcher.vector_store or researcher.source_urls:
+                raise ValueError("Query gating currently supports standard web research without MCP/vector-store/source-URL modes")
+            if any("mcpretriever" in r.__name__.lower() for r in researcher.retrievers):
+                raise ValueError("MCP query gating is unsupported")
+            model = FrozenMLP(gate_config.get("run", DEFAULT_RUN))
+            model.validate_endpoint()
+            root = (ctx.extra or {}).get("run_dir")
+            if not root:
+                raise ValueError("Query gating requires a unique run_dir for audit logs")
+            # Hash the identifier to avoid path traversal or secrets in filenames.
+            import hashlib
+            safe_id = hashlib.sha256(task.query.id.encode()).hexdigest()[:16]
+            gate = QueryGate(model, researcher, task,
+                             Path(root)/"query_gate"/f"{safe_id}.jsonl", TokenTracker, hooks,
+                             enforce_budget=bool(((ctx.extra or {}).get("config", {}).get("budget") or {}).get("enforce", False)))
+            token = hooks.active_gate.set(gate)
+            try:
+                await researcher.conduct_research()
+            except Exception:
+                self._fill_meter(ctx, TokenTracker, LatencyTracker, n_fetches=gate.reads)
+                meter = (ctx.extra or {}).get("meter")
+                if meter is not None:
+                    meter.n_search_calls = gate.searches
+                ctx.extra["partial_research_accounting"] = {
+                    "research_usage": {k: TokenTracker.get_totals().get(k) for k in ("input_tokens", "output_tokens", "cost")},
+                    "searches": gate.searches, "reads": gate.reads, "gate_decisions": gate.steps,
+                    "scope": "partial research; excludes MLP embedding overhead",
+                }
+                raise
+            finally:
+                hooks.active_gate.reset(token)
+                await gate.close()
+        elif development:
+            from adr.development.trace import DevelopmentTrace
+            hooks = importlib.import_module("gpt_researcher.utils.development_trace")
+            root = (ctx.extra or {}).get("run_dir")
+            if not root:
+                raise ValueError("Development trace requires run_dir")
+            import hashlib
+            safe_id = hashlib.sha256(task.query.id.encode()).hexdigest()[:16]
+            trace = DevelopmentTrace(Path(root)/"development_trace"/f"{safe_id}.jsonl",
+                                     task.query.text, ((ctx.extra or {}).get("config") or {}).get("budget", {}),
+                                     TokenTracker, LatencyTracker, hooks.candidate_id,
+                                     canonical_source=(lambda: researcher.deep_researcher.trajectory_logger._global_evidence)
+                                     if self.config.get('development_trace', {}).get('exact_numerical_features', False) else None)
+            trace.event("query_identity", query_id=task.query.id, dataset=task.query.dataset,
+                        depth=researcher.deep_researcher.depth, breadth=researcher.deep_researcher.breadth,
+                        concurrency=researcher.deep_researcher.concurrency_limit)
+            token = hooks.active_trace.set(trace)
+            status = "failed"
+            try:
+                await researcher.conduct_research()
+                status = "research_completed"
+            finally:
+                hooks.active_trace.reset(token)
+                trace.close(status)
+                self._fill_meter(ctx, TokenTracker, LatencyTracker, n_fetches=trace.reads)
+                meter = (ctx.extra or {}).get("meter")
+                if meter is not None:
+                    meter.n_search_calls = trace.searches
+                if status == "failed":
+                    ctx.extra["partial_research_accounting"] = trace.accounting()
+        else:
+            await researcher.conduct_research()
         report_text = await self._write_report(researcher, task)
         wall = time.perf_counter() - t0
 
@@ -181,9 +346,27 @@ class GPTResearcherAgent:
             ctx,
             TokenTracker,
             LatencyTracker,
-            n_fetches=len(getattr(researcher, "visited_urls", ()) or ()),
+            n_fetches=trace.reads if (development or redundancy_config is not None or expansion_config is not None) else len(getattr(researcher, "visited_urls", ()) or ()),
         )
 
+        if expansion_config is not None:
+            meter = (ctx.extra or {}).get("meter")
+            if meter is not None:
+                meter.n_search_calls = trace.searches
+            traj.final_stats["branch_expansion"] = expansion.metrics()
+            traj.final_stats["branch_expansion_audit"] = str(trace.path)
+        if redundancy_config is not None:
+            meter = (ctx.extra or {}).get("meter")
+            if meter is not None:
+                meter.n_search_calls = trace.searches
+            traj.final_stats["redundancy_gate"] = gate.metrics()
+            traj.final_stats["redundancy_audit"] = str(trace.path)
+        if development:
+            meter = (ctx.extra or {}).get("meter")
+            if meter is not None:
+                meter.n_search_calls = trace.searches
+            traj.final_stats["development_only"] = True
+            traj.final_stats["development_trace"] = str(trace.path)
         if self.config.get("keep_trajectory_files", True):
             self._copy_trajectory_files(ctx, gtraj.query_id, task.query.id)
         return traj

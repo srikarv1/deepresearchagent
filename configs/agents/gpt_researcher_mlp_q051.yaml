@@ -1,0 +1,23 @@
+# Dedicated q051 DRB agent. Threshold 0.5 is checked by frozen inference.
+name: gpt_researcher
+query_gate:
+  enabled: true
+  run: runs/mlp/baseline-v1-20260923T044920906450Z
+repo_path: null
+depth: 3
+breadth: 4
+concurrency: 1
+scraper: browser
+retriever: tavily
+max_search_results_per_query: 5
+max_scraper_workers: 4
+trajectory_dir: runs/_gpt_researcher_raw
+keep_trajectory_files: true
+env:
+  STRATEGIC_LLM: openai:gpt-5-mini
+  SMART_LLM: openai:gpt-5-mini
+  FAST_LLM: openai:gpt-5-mini
+  EMBEDDING: openai:text-embedding-3-small
+  GR_ORCHESTRATOR: "none"
+  # Nominal policy context budget; none retains all evidence and does not cap it.
+  GR_CONTEXT_BUDGET_TOKENS: "50000"

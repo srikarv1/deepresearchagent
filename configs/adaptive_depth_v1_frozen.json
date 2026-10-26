@@ -1,0 +1,51 @@
+{
+  "version": "hierarchical-depth-budget-one-per-root-v1",
+  "hashes": {
+    "src/adr/orchestration/branch_budget.py": "ecbc44b2b5912fe827bb10802a2683989f80fe8c47ec0fe35771a3b50c9aa8f4",
+    "src/adr/orchestration/branch_analysis.py": "3cc1839de40221c85278b6071f7ca47a717057235f29da13d20068fe43f936e3",
+    "src/adr/orchestration/branch_metrics.py": "8972d45d8022fae1b065f2abc4f6f60b8322b9fb37b0ba99d9cc2dc93625dbb2",
+    "src/adr/agents/gpt_researcher.py": "b8bd45e226628a178f3ca108c6c8e5eb0a9bf6884c0caf9050b7bdb303a4b60e",
+    "third_party/gpt-researcher/gpt_researcher/utils/branch_expansion.py": "6464a464c2d7587479d488998f5f238c8136c6b58509f57bd8d4113c44902953",
+    "third_party/gpt-researcher/gpt_researcher/skills/deep_research.py": "2182e78f7ad20acd9ca2747780c5242d09c6de5a7f4609331bfbf4a77119eabb",
+    "scripts/patches/gpt_researcher_branch_expansion.patch": "a432e9f70991e1d7df31d9227ccfb3c25af1b0d6bfee56b109bc70cffa18c6e6",
+    "tests/test_branch_budget.py": "4b59a8751739ec1d5beeb99d135b47ed189ac3fec84ef9c79344a5278df6faa2",
+    "configs/agents/gpt_researcher_adaptive_depth.yaml": "b8f0a8ed64b8f42c79b1c990c2e616ab85fb278c21021fe2bd1cef160a721854",
+    "configs/adaptive_depth_smoke.yaml": "4fa40e282a77c22fee91e7da22a2f998f9e5dbeeffa1731fecdd728a610b78f7",
+    "configs/adaptive_depth_evaluation.yaml": "5ab6917626ae2a7708717a775f4ea8fda8a86fee91076572ef2e9bf9a43e5c39",
+    "configs/adaptive_depth_quality.yaml": "2611f03bf25982e26bfc153332effca111df2b17abe218722b60af45e1952c01",
+    "tests/test_browser_headless.py": "e7b8f526661577fd084a81912dc3b41ed09e80b0bbaf9c260ab8016d7b7866ff",
+    "configs/agents/gpt_researcher_adaptive_depth_headless.yaml": "45e0bbf5bc051665886cf3dcb6a3ecf1134678ef0922a758b305e06b013e3c7d",
+    "runs/adaptive-depth-development-v1/baseline_compatibility.json": "6aa3e65a8b8475449a0bb931d12be0be30c6f718e116b0f53ca48a840bc7a693"
+  },
+  "policy_inputs": [
+    "published hierarchy",
+    "tree depth",
+    "planner order",
+    "expansion count per root"
+  ],
+  "no_future_cost_policy_inputs": true,
+  "tests_passed": 107,
+  "protected_files_unchanged": 1467,
+  "api_calls": 0,
+  "live_runs": 0,
+  "comparison_status": "Team-confirmed Table4 q51\u201355; ZIP IDs are archive/provenance mismatch; efficiency and unarchived settings unresolved",
+  "development_analysis": "runs/adaptive-depth-development-v1/analysis.json",
+  "evaluation_revision": "q051-055-headless-v1",
+  "evaluation_query_ids": [
+    "51",
+    "52",
+    "53",
+    "54",
+    "55"
+  ],
+  "headless_evaluation_only": true,
+  "evaluation_revision_verification": {
+    "offline_tests_passed": 27,
+    "chrome_option_difference": [
+      "--headless"
+    ],
+    "policy_and_smoke_hashes_unchanged": true,
+    "question_text_inspected": false,
+    "api_calls": 0
+  }
+}

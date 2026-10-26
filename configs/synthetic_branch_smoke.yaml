@@ -1,0 +1,7 @@
+output: runs/synthetic-branch-v2-smoke/smoke-1
+model: gpt-5-mini
+world_completion_tokens: 32000
+annotation_completion_tokens: 16000
+min_candidates: 8
+max_candidates: 12
+max_attempts_per_stage: 1

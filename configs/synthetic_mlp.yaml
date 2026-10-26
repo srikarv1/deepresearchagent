@@ -1,0 +1,33 @@
+dataset_version: v1
+output_dir: data/synthetic
+heldout_path: data/heldout/drb_baseline.json
+questions: 20
+states_per_question: 5
+candidates_per_state: 4
+max_attempts: 3
+llm:
+  provider: openai
+  model: gpt-5-mini
+  temperature: 0.7
+  max_output_tokens: 16000
+topics:
+  - municipal water reuse
+  - public library accessibility
+  - cold-chain logistics for small cooperatives
+  - coastal infrastructure maintenance
+  - school building ventilation
+  - regional rail service planning
+  - food-waste collection systems
+  - rural broadband maintenance
+  - urban heat mitigation
+  - industrial heat recovery
+  - community battery ownership
+  - public archives preservation
+  - agricultural water measurement
+  - museum collection transport
+  - low-noise road surfaces
+  - university laboratory procurement
+  - river sediment monitoring
+  - repairable appliance procurement
+  - district heating retrofits
+  - accessible emergency communications

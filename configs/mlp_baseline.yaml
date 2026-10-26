@@ -1,0 +1,14 @@
+prepared: data/mlp/cleaned-r1-seed42-azure
+output_root: runs/mlp
+seed: 42
+input_dimensions: 4623
+hidden_dimensions: [256, 64]
+dropout: 0.2
+learning_rate: 0.001
+weight_decay: 0.0001
+batch_size: 32
+max_epochs: 100
+patience: 10
+threshold: 0.5
+logistic_C: 1.0
+logistic_max_iter: 2000

@@ -446,3 +446,72 @@ def test_legacy_fallback_prompt_is_official_query_template():
 
     assert _LEGACY_BROWSECOMP_PROMPT == QUERY_TEMPLATE_NO_GET_DOCUMENT
     assert "You have completed research" not in _LEGACY_BROWSECOMP_PROMPT
+
+
+@pytest.mark.asyncio
+async def test_disabled_gate_does_not_construct_mlp(fake_gpt_researcher, gym_query, tmp_path, monkeypatch):
+    from adr.agents.gpt_researcher import GPTResearcherAgent
+    import adr.mlp.inference as inference
+    def forbidden(*args, **kwargs):
+        raise AssertionError('Disabled gate initialized the MLP')
+    monkeypatch.setattr(inference, 'FrozenMLP', forbidden)
+    agent = GPTResearcherAgent({'query_gate': {'enabled': False}})
+    traj = await agent.run(ResearchTask(query=gym_query), AgentContext(None, None, {'run_dir': str(tmp_path)}))
+    assert traj.report is not None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fail", [False, True])
+async def test_enabled_gate_scope_and_cleanup(fake_gpt_researcher, gym_query, tmp_path, monkeypatch, fail):
+    from contextvars import ContextVar
+    from adr.agents.gpt_researcher import GPTResearcherAgent
+    import adr.mlp.inference as inference
+    import adr.mlp.query_gate as query_gate
+    hooks = types.ModuleType('gpt_researcher.utils.query_gate')
+    hooks.HOOK_VERSION = 1
+    hooks.active_gate = ContextVar('adapter_test_gate', default=None)
+    monkeypatch.setitem(sys.modules, hooks.__name__, hooks)
+    events = []
+    class Model:
+        def __init__(self, *args): events.append('model_loaded')
+        def validate_endpoint(self): events.append('endpoint_checked')
+    class Gate:
+        def __init__(self, *args, enforce_budget=False):
+            assert enforce_budget is False
+            self.searches=22; self.reads=70; self.steps=16
+            events.append('gate_created')
+        async def close(self): events.append('gate_closed')
+    class Researcher(_FakeGPTResearcher):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.deep_researcher.concurrency_limit = 1
+            self.mcp_configs = []
+            self.vector_store = None
+            self.source_urls = []
+            self.retrievers = []
+        async def conduct_research(self):
+            assert isinstance(hooks.active_gate.get(), Gate)
+            events.append('research')
+            if fail:
+                _TokenTracker.total_input_tokens=60000
+                _TokenTracker.total_output_tokens=2000
+                _TokenTracker.total_cost=.1
+                raise ValueError('offline gate failure')
+            return await super().conduct_research()
+    monkeypatch.setattr(inference, 'FrozenMLP', Model)
+    monkeypatch.setattr(query_gate, 'QueryGate', Gate)
+    monkeypatch.setattr(sys.modules['gpt_researcher'], 'GPTResearcher', Researcher)
+    agent = GPTResearcherAgent({'query_gate': {'enabled': True}})
+    from adr.core.instrument import CostMeter
+    meter=CostMeter()
+    ctx=AgentContext(None,None,{'run_dir':str(tmp_path),'meter':meter})
+    if fail:
+        with pytest.raises(ValueError,match='offline gate failure'):
+            await agent.run(ResearchTask(query=gym_query),ctx)
+        assert meter.total_tokens==62000 and meter.n_search_calls==22 and meter.n_fetch_calls==70
+        assert ctx.extra['partial_research_accounting']['research_usage']['cost']==.1
+    else:
+        traj=await agent.run(ResearchTask(query=gym_query),ctx)
+        assert traj.report is not None
+    assert events == ['model_loaded', 'endpoint_checked', 'gate_created', 'research', 'gate_closed']
+    assert hooks.active_gate.get() is None

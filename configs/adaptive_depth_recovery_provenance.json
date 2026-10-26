@@ -1,0 +1,75 @@
+{
+  "version": "adaptive-depth-recovery-v1",
+  "reason": "Suspected Tavily quota exhaustion; conservative full five-query reproducibility rerun, not tuning.",
+  "original_run": "runs/adaptive-depth-william-five-v1/20260930-012124-adaptive-depth-william-five-v1",
+  "original_status": "preserved, retrieval-confounded",
+  "policy_frozen_before_both_runs": true,
+  "experimental_changes": [],
+  "external_change": "New Tavily credential/quota supplied only through runtime environment; value never serialized. Actual quota must be checked by operator.",
+  "query_ids": [
+    "51",
+    "52",
+    "53",
+    "54",
+    "55"
+  ],
+  "allowed_configuration_differences": [
+    "run_name",
+    "output_dir"
+  ],
+  "original_frozen_hashes": {
+    "src/adr/orchestration/branch_budget.py": "ecbc44b2b5912fe827bb10802a2683989f80fe8c47ec0fe35771a3b50c9aa8f4",
+    "src/adr/orchestration/branch_analysis.py": "3cc1839de40221c85278b6071f7ca47a717057235f29da13d20068fe43f936e3",
+    "src/adr/orchestration/branch_metrics.py": "8972d45d8022fae1b065f2abc4f6f60b8322b9fb37b0ba99d9cc2dc93625dbb2",
+    "src/adr/agents/gpt_researcher.py": "b8bd45e226628a178f3ca108c6c8e5eb0a9bf6884c0caf9050b7bdb303a4b60e",
+    "third_party/gpt-researcher/gpt_researcher/utils/branch_expansion.py": "6464a464c2d7587479d488998f5f238c8136c6b58509f57bd8d4113c44902953",
+    "third_party/gpt-researcher/gpt_researcher/skills/deep_research.py": "2182e78f7ad20acd9ca2747780c5242d09c6de5a7f4609331bfbf4a77119eabb",
+    "scripts/patches/gpt_researcher_branch_expansion.patch": "a432e9f70991e1d7df31d9227ccfb3c25af1b0d6bfee56b109bc70cffa18c6e6",
+    "tests/test_branch_budget.py": "4b59a8751739ec1d5beeb99d135b47ed189ac3fec84ef9c79344a5278df6faa2",
+    "configs/agents/gpt_researcher_adaptive_depth.yaml": "b8f0a8ed64b8f42c79b1c990c2e616ab85fb278c21021fe2bd1cef160a721854",
+    "configs/adaptive_depth_smoke.yaml": "4fa40e282a77c22fee91e7da22a2f998f9e5dbeeffa1731fecdd728a610b78f7",
+    "configs/adaptive_depth_evaluation.yaml": "5ab6917626ae2a7708717a775f4ea8fda8a86fee91076572ef2e9bf9a43e5c39",
+    "configs/adaptive_depth_quality.yaml": "2611f03bf25982e26bfc153332effca111df2b17abe218722b60af45e1952c01",
+    "tests/test_browser_headless.py": "e7b8f526661577fd084a81912dc3b41ed09e80b0bbaf9c260ab8016d7b7866ff",
+    "configs/agents/gpt_researcher_adaptive_depth_headless.yaml": "45e0bbf5bc051665886cf3dcb6a3ecf1134678ef0922a758b305e06b013e3c7d",
+    "runs/adaptive-depth-development-v1/baseline_compatibility.json": "6aa3e65a8b8475449a0bb931d12be0be30c6f718e116b0f53ca48a840bc7a693"
+  },
+  "judge_settings": {
+    "LLM_BACKEND": "openai",
+    "RACE_MODEL": "gpt-5-mini",
+    "FACT_MODEL": "gpt-5-mini",
+    "GR_CONTEXT_BUDGET_TOKENS": "50000",
+    "FACT_retrieval": "Jina"
+  },
+  "credential_variable_names": [
+    "TAVILY_API_KEY",
+    "OPENAI_API_KEY",
+    "OPENAI_BASE_URL",
+    "JINA_API_KEY"
+  ],
+  "quality_requires_manual_integrity_review": true,
+  "Q_per_second": null,
+  "recovery_hashes": {
+    "configs/adaptive_depth_recovery.yaml": "d6f4126e07f96079dd36d3190d5d01c96116a0aa4880abd5423f678354d0879a",
+    "configs/adaptive_depth_recovery_quality.yaml": "b941d3ba7c1dca0b920d619f63ab615fc9bbcf9087d36a2738113c43ddfd2ec4"
+  },
+  "infrastructure_hashes": {
+    "src/adr/orchestration/recovery.py": "a89f00cd8c4eb40776fb723b59593b64774fc1737a375625c551b7481f2b6f5d",
+    "tests/test_adaptive_depth_recovery.py": "6085460b762a77de47e193f1d66a736e8d0d0606a8122e4bd6e90e479fde745a"
+  },
+  "offline_verification": {
+    "tests_passed": 26,
+    "original_vs_recovery_only_differences": [
+      "run_name",
+      "output_dir"
+    ],
+    "same_shared_headless_agent_config": true,
+    "runtime_credentials_not_read_or_stored": true
+  },
+  "limitations": [
+    "Existing logger has no exact successful-page count; audit reports null and canonical evidence separately.",
+    "Some Tavily errors are printed but not persisted; optionally supply a saved console log; absence of errors is not proof of retrieval success.",
+    "Manual integrity review required before judges; fresh credential quota cannot be checked offline.",
+    "Prior archive/Table4 provenance and Q/sec limitations remain; no mixed old/new results."
+  ]
+}

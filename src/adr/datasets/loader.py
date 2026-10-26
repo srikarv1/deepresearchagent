@@ -26,6 +26,7 @@ BROWSECOMP_PLUS_CANARY = (
 
 
 class DatasetName(str, Enum):
+    DEVELOPMENT = "development"
     DEEP_RESEARCH_BENCH = "deep_research_bench"
     DEEP_RESEARCH_GYM = "deep_research_gym"
     BROWSECOMP_PLUS = "browsecomp_plus"
@@ -47,6 +48,8 @@ def load_queries(
     query_ids: list[str] | None = None,
 ) -> list[Query]:
     name = DatasetName(dataset)
+    if name is DatasetName.DEVELOPMENT and path is None:
+        raise ValueError("Development queries require an explicit local path")
     source = Path(path) if path else _DEFAULT_SOURCES[name]
     if not source.exists():
         raise FileNotFoundError(f"Query file not found: {source}")
@@ -69,7 +72,7 @@ def load_queries(
 
 
 def _row_to_query(dataset: DatasetName, row: dict) -> Query:
-    if dataset is DatasetName.DEEP_RESEARCH_BENCH:
+    if dataset in (DatasetName.DEEP_RESEARCH_BENCH, DatasetName.DEVELOPMENT):
         return Query(
             id=str(row["id"]),
             text=row["prompt"],
