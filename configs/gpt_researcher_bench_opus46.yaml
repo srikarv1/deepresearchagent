@@ -1,0 +1,7 @@
+# gpt_researcher_bench.yaml with Claude Opus 4.6 as the agent LLM.
+#   adr run --config configs/gpt_researcher_bench_opus46.yaml --limit 5
+extends: gpt_researcher_bench.yaml
+
+run_name: gpt-researcher-bench-opus46
+agent:
+  config: configs/agents/gpt_researcher_bench_opus46.yaml

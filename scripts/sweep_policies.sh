@@ -53,8 +53,9 @@ done
 # Resolve --bench / --config in either direction; canonical names below.
 _bench_from_config() {
   python3 - "$1" <<'PY'
-import sys, yaml
-cfg = yaml.safe_load(open(sys.argv[1], encoding="utf-8")) or {}
+import sys
+from adr.runner.config import load_config  # resolves `extends:`
+cfg = load_config(sys.argv[1])
 print(str((cfg.get("dataset") or {}).get("name") or ""))
 PY
 }

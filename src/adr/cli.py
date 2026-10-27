@@ -422,6 +422,18 @@ def doctor_cmd() -> None:
             "" if importable else f"pip install -e {gr.path}",
         )
 
+    from importlib.metadata import PackageNotFoundError, version as pkg_version
+
+    try:
+        claude_pkgs = f"langchain-anthropic {pkg_version('langchain-anthropic')}, anthropic {pkg_version('anthropic')}"
+    except PackageNotFoundError:
+        claude_pkgs = ""
+    table.add_row(
+        "langchain-anthropic (anthropic: agent LLMs)",
+        "[green]yes[/green]" if claude_pkgs else "[yellow]no[/yellow]",
+        claude_pkgs or "pip install langchain-anthropic",
+    )
+
     bcp = find_bcp_index()
     table.add_row(
         "BrowseComp-Plus BM25 index",
@@ -466,6 +478,7 @@ def doctor_cmd() -> None:
     for name, used_for in (
         ("OPENAI_API_KEY", "all Gym judges" + (f"; DRB judge (backend openai, {drb_source})" if drb_backend == "openai" else "")),
         ("OPENROUTER_API_KEY", f"DRB judge (backend openrouter, {drb_source})" if drb_backend == "openrouter" else "DRB judge only with backend openrouter"),
+        ("ANTHROPIC_API_KEY", "agent LLMs set to anthropic: models (configs/agents/*_opus46.yaml)"),
         ("JINA_API_KEY", "DRB FACT scraping"),
         ("DEEPRESEARCHGYM_API_KEY", "Gym search backend"),
         ("TAVILY_API_KEY", "live web search"),

@@ -1,0 +1,11 @@
+# gpt_researcher_gym.yaml with Claude Opus 4.6 on the Claude API as planner,
+# researcher and writer. Tree shape, Gym corpus and orchestration come from the
+# base file. Embeddings stay on OpenAI (the Claude API has no embeddings
+# endpoint), so OPENAI_API_KEY is still needed next to ANTHROPIC_API_KEY.
+#   pip install langchain-anthropic
+extends: gpt_researcher_gym.yaml
+
+env:
+  STRATEGIC_LLM: "anthropic:claude-opus-4-6"
+  SMART_LLM: "anthropic:claude-opus-4-6"
+  FAST_LLM: "anthropic:claude-opus-4-6"

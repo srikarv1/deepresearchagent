@@ -1,0 +1,7 @@
+# gpt_researcher_gym.yaml with Claude Opus 4.6 as the agent LLM.
+#   adr run --config configs/gpt_researcher_gym_opus46.yaml --limit 5
+extends: gpt_researcher_gym.yaml
+
+run_name: gpt-researcher-gym-opus46
+agent:
+  config: configs/agents/gpt_researcher_gym_opus46.yaml

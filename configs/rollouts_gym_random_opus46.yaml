@@ -1,0 +1,8 @@
+# rollouts_gym_random.yaml with Claude Opus 4.6 as the agent LLM.
+#   adr rollouts --config configs/rollouts_gym_random_opus46.yaml \
+#       --out runs/rollouts_gym_opus46 --n-seeds 10 -j 4 --limit 30 \
+#       --evaluate deep_research_gym
+extends: rollouts_gym_random.yaml
+
+agent:
+  config: configs/agents/gpt_researcher_gym_opus46.yaml

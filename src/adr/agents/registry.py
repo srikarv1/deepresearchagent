@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import yaml
-
 from adr.agents.base import ResearchAgent
 from adr.agents import deep_research, fixture, gpt_researcher, pilot
 
@@ -35,7 +33,7 @@ def _load_config(config: dict | str | Path | None) -> dict:
     path = Path(config)
     if not path.exists():
         return {}
-    loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    if not isinstance(loaded, dict):
-        raise ValueError(f"Agent config must be a mapping: {path}")
-    return loaded
+    # Imported here: adr.runner imports this module through experiment.py.
+    from adr.runner.config import load_yaml
+
+    return load_yaml(path)
