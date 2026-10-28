@@ -1,0 +1,8 @@
+# rollouts_drb_random.yaml with Claude Opus 4.6 as the agent LLM.
+#   adr rollouts --config configs/rollouts_drb_random_opus46.yaml \
+#       --out runs/rollouts_drb_opus46 --n-seeds 10 -j 4 --limit 30 \
+#       --evaluate deep_research_bench
+extends: rollouts_drb_random.yaml
+
+agent:
+  config: configs/agents/gpt_researcher_bench_opus46.yaml

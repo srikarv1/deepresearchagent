@@ -32,7 +32,11 @@ Config keys (configs/agents/gpt_researcher_{bench,gym,browsecomp_plus}.yaml, one
                    without editing the file; every such override is logged
                    and the effective values land in final_stats["orchestration"]
   env              extra env vars to set before import (dict); always applied,
-                   so a GR_* here overrides both the shell and `orchestration`
+                   so a GR_* here overrides both the shell and `orchestration`.
+                   STRATEGIC_LLM / SMART_LLM / FAST_LLM pick the backbone; an
+                   ``anthropic:<model>`` value (Claude API) needs ANTHROPIC_API_KEY
+                   and langchain-anthropic, checked before the run.
+                   The effective values land in final_stats["llm"]
   trajectory_dir   where gpt-researcher writes trajectory_*.json / _emb.npz
   keep_trajectory_files  copy gpt-researcher's files into the run dir
 """
@@ -40,6 +44,7 @@ Config keys (configs/agents/gpt_researcher_{bench,gym,browsecomp_plus}.yaml, one
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import json
 import logging
 import os
@@ -79,6 +84,15 @@ _ENV_MAP = {
 }
 
 _log = logging.getLogger(__name__)
+
+# The fork's model selection ("<provider>:<model>"), recorded per trajectory.
+_LLM_ENV = ("STRATEGIC_LLM", "SMART_LLM", "FAST_LLM", "EMBEDDING")
+_CHAT_LLM_ENV = ("STRATEGIC_LLM", "SMART_LLM", "FAST_LLM")
+
+
+def _module_available(name: str) -> bool:
+    return importlib.util.find_spec(name) is not None
+
 
 # `orchestration:` section of the agent config -> the fork's GR_* variables
 # (gpt_researcher/orchestration/policies.py, features.py, typesafe.py).
@@ -165,6 +179,8 @@ class GPTResearcherAgent:
         self._imported = False
         # GR_* name -> effective value after YAML defaults and env overrides.
         self._orchestration_effective: dict[str, str] = {}
+        # *_LLM / EMBEDDING -> effective value the fork will read.
+        self._llm_effective: dict[str, str] = {}
 
     # ── import / env ──────────────────────────────────────────────
     def _prepare_import(self) -> None:
@@ -191,6 +207,9 @@ class GPTResearcherAgent:
             env_name: os.environ[env_name]
             for env_name in sorted(_ORCH_ENV_MAP.values())
             if os.environ.get(env_name, "").strip()
+        }
+        self._llm_effective = {
+            name: os.environ[name].strip() for name in _LLM_ENV if os.environ.get(name, "").strip()
         }
         traj_dir = self.config.get("trajectory_dir")
         if traj_dir:
@@ -253,8 +272,32 @@ class GPTResearcherAgent:
                     pass
             return await researcher.write_report()
 
+    def _check_llm_backends(self) -> None:
+        """Fail before the run when a Claude (``anthropic:``) backbone cannot work.
+
+        Without this, a missing key surfaces as ten retries per LLM call, and a
+        missing package triggers the fork's runtime ``pip install``, which
+        races when ``adr rollouts -j N`` starts several processes at once.
+        """
+        claude = [
+            name for name in _CHAT_LLM_ENV
+            if self._llm_effective.get(name, "").lower().startswith("anthropic:")
+        ]
+        if not claude:
+            return
+        if not _module_available("langchain_anthropic"):
+            raise RuntimeError(
+                f"{', '.join(claude)} select anthropic: models but langchain-anthropic is not "
+                "installed; run: pip install langchain-anthropic"
+            )
+        if not os.environ.get("ANTHROPIC_API_KEY", "").strip():
+            raise RuntimeError(
+                f"{', '.join(claude)} select anthropic: models but ANTHROPIC_API_KEY is not set"
+            )
+
     def _modules(self) -> tuple[Any, Any, Any]:
         self._prepare_import()
+        self._check_llm_backends()
         gr = importlib.import_module("gpt_researcher")
         tok = importlib.import_module("gpt_researcher.utils.token_tracker").TokenTracker
         lat = importlib.import_module("gpt_researcher.utils.latency_tracker").LatencyTracker
@@ -292,6 +335,7 @@ class GPTResearcherAgent:
         traj = state.trajectory()
         traj.final_stats.update(self._extra_stats(gtraj, wall))
         traj.final_stats["orchestration"] = dict(self._orchestration_effective)
+        traj.final_stats["llm"] = dict(self._llm_effective)
         traj.final_stats["retrieved_docids"] = self._retrieved_docids(researcher, gtraj)
         traj.final_stats["_label_items"] = [
             {

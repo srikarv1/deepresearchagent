@@ -495,16 +495,76 @@ def test_orchestration_env_rejects_unknown_keys():
         orchestration_env(["policy"])  # type: ignore[arg-type]
 
 
+_CLAUDE_ENV = {
+    "STRATEGIC_LLM": "anthropic:claude-opus-4-6",
+    "SMART_LLM": "anthropic:claude-opus-4-6",
+    "FAST_LLM": "anthropic:claude-opus-4-6",
+    "EMBEDDING": "openai:text-embedding-3-small",
+}
+
+
+@pytest.fixture
+def clean_llm_env(monkeypatch: pytest.MonkeyPatch):
+    for name in (*_CLAUDE_ENV, "ANTHROPIC_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    return monkeypatch
+
+
+def test_claude_backbone_without_key_fails_before_the_run(clean_llm_env):
+    from adr.agents import gpt_researcher as mod
+
+    clean_llm_env.setattr(mod, "_module_available", lambda name: True)
+    agent = mod.GPTResearcherAgent({"repo_path": None, "env": dict(_CLAUDE_ENV)})
+    agent._prepare_import()
+    with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY is not set"):
+        agent._check_llm_backends()
+
+
+def test_claude_backbone_without_package_names_the_extra(clean_llm_env):
+    from adr.agents import gpt_researcher as mod
+
+    clean_llm_env.setenv("ANTHROPIC_API_KEY", "test-key")
+    clean_llm_env.setattr(mod, "_module_available", lambda name: name != "langchain_anthropic")
+    agent = mod.GPTResearcherAgent({"repo_path": None, "env": dict(_CLAUDE_ENV)})
+    agent._prepare_import()
+    with pytest.raises(RuntimeError, match="pip install langchain-anthropic"):
+        agent._check_llm_backends()
+
+
+def test_openai_backbone_skips_the_claude_checks(clean_llm_env):
+    from adr.agents import gpt_researcher as mod
+
+    clean_llm_env.setattr(mod, "_module_available", lambda name: False)
+    agent = mod.GPTResearcherAgent({"repo_path": None, "env": {"SMART_LLM": "openai:gpt-5-mini"}})
+    agent._prepare_import()
+    agent._check_llm_backends()
+
+
+@pytest.mark.asyncio
+async def test_trajectory_records_the_backbone(fake_gpt_researcher: Path, gym_query, clean_llm_env):
+    from adr.agents import gpt_researcher as mod
+
+    clean_llm_env.setenv("ANTHROPIC_API_KEY", "test-key")
+    clean_llm_env.setattr(mod, "_module_available", lambda name: True)
+    agent = mod.GPTResearcherAgent({"keep_trajectory_files": False, "env": dict(_CLAUDE_ENV)})
+    ctx = AgentContext(llm=None, search=None, extra={"meter": CostMeter()})
+
+    traj = await agent.run(ResearchTask(query=gym_query), ctx)
+
+    assert traj.final_stats["llm"] == _CLAUDE_ENV
+
+
 def test_shipped_agent_configs_validate_against_the_mapping():
     """Every gpt_researcher agent YAML in configs/ must flatten cleanly, so a
     typo in a checked-in config fails here rather than at run time."""
-    import yaml
     from adr.agents.gpt_researcher import orchestration_env
+    from adr.runner.config import load_yaml
 
     paths = sorted(Path("configs/agents").glob("gpt_researcher*.yaml"))
     assert paths, "no gpt_researcher agent configs found"
     for path in paths:
-        cfg = yaml.safe_load(path.read_text(encoding="utf-8"))
+        cfg = load_yaml(path)
         env = orchestration_env(cfg.get("orchestration"))
         assert env["GR_ORCHESTRATOR"] == "legacy", path
         assert env["GR_CONTEXT_BUDGET_TOKENS"] == "50000", path
