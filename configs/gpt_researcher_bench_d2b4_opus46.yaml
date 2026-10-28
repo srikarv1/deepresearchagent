@@ -1,0 +1,7 @@
+# gpt_researcher_bench.yaml on the d2b4 tree with Claude Opus 4.6.
+#   adr run --config configs/gpt_researcher_bench_d2b4_opus46.yaml --limit 5
+extends: gpt_researcher_bench.yaml
+
+run_name: gpt-researcher-bench-d2b4-opus46
+agent:
+  config: configs/agents/gpt_researcher_bench_d2b4_opus46.yaml

@@ -1,0 +1,8 @@
+# d2b4 tree with Claude Opus 4.6: 4 root sub-queries, each expanded once more
+# into 2 children (4 + 8 = 12 nodes; d3b4 has 28). Per-root depth is then a
+# binary deepen-or-not choice, 2^4 = 16 subtrees per query for oracle replay
+# instead of 3^4 = 81. Everything else comes from the Opus 4.6 bench config.
+extends: gpt_researcher_bench_opus46.yaml
+
+depth: 2
+breadth: 4
