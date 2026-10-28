@@ -72,12 +72,26 @@ def _local_embed(texts: list[str]) -> np.ndarray:
         return SentenceTransformer("BAAI/bge-small-en-v1.5").encode(texts).astype(np.float32)
 
 
+LOCAL_EMBED_MODEL = "bge-small-en-v1.5"
+OPENAI_EMBED_MODEL = "text-embedding-3-small"
+
+
+def embed_model_name() -> str:
+    """Model behind the EpisodeState features. The live ExpansionPolicy embeds with
+    the bge-small server (GR_REPLAYGYM_EMBED_URL), so only REPLAY_EMBED=local
+    trains on the features it will see."""
+    return LOCAL_EMBED_MODEL if os.environ.get("REPLAY_EMBED") == "local" else OPENAI_EMBED_MODEL
+
+
 class Embedder:
-    """text-embedding-3-small, cached per query id (goal and learnings per node)."""
+    """Goal and learnings vectors per node, cached per query id and per model."""
 
     def __init__(self, cache_dir: Path = DATA / "emb"):
-        self.cache_dir = cache_dir
-        cache_dir.mkdir(parents=True, exist_ok=True)
+        self.model = embed_model_name()
+        # One cache per model, so switching REPLAY_EMBED never reuses vectors
+        # computed by the other model.
+        self.cache_dir = cache_dir / self.model
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
 
     def for_tree(self, qid: str, tree: ResearchTree) -> dict[str, np.ndarray]:
         path = self.cache_dir / f"{qid}.npz"
@@ -86,12 +100,12 @@ class Embedder:
             return {k: d[k] for k in d.files}
         texts = [tree.query] + [tree.nodes[n].research_goal or tree.nodes[n].query for n in tree.order]
         texts += [" ".join(tree.nodes[n].learnings) or "(none)" for n in tree.order]
-        if os.environ.get("REPLAY_EMBED") == "local":
+        if self.model == LOCAL_EMBED_MODEL:
             m = _local_embed([t[:4000] for t in texts])
         else:
             from openai import OpenAI
 
-            resp = OpenAI().embeddings.create(model="text-embedding-3-small", input=[t[:8000] for t in texts])
+            resp = OpenAI().embeddings.create(model=OPENAI_EMBED_MODEL, input=[t[:8000] for t in texts])
             m = np.array([e.embedding for e in resp.data], dtype=np.float32)
         m /= np.linalg.norm(m, axis=1, keepdims=True) + 1e-9
         k = len(tree.order)
@@ -178,10 +192,19 @@ class Decision:
 class EpisodeState:
     """Branch-by-branch expansion over one cached tree."""
 
-    def __init__(self, qid: str, tree: ResearchTree, emb: dict[str, np.ndarray]):
+    def __init__(self, qid: str, tree: ResearchTree, emb: dict[str, np.ndarray], n_full: int | None = None):
         self.qid, self.tree, self.emb = qid, tree, emb
         self.idx = {n: i for i, n in enumerate(tree.order)}
         self.full_tokens = max(1, tree.tokens(tree.all_nodes()))
+        # Denominator of f[7]. The live policy divides by full_tree_size(breadth,
+        # depth) of the agent config, not by the nodes this cached run happened to
+        # produce, so pass that size for train/serve parity (default: cached nodes).
+        if n_full is not None and n_full < len(tree.nodes):
+            raise ValueError(
+                f"n_full={n_full} < {len(tree.nodes)} cached nodes for {qid}: pass "
+                "full_tree_size(breadth, depth) of the agent that produced the tree"
+            )
+        self.n_full = int(n_full) if n_full is not None else len(tree.nodes)
         # Mirrors the live agent's timing exactly:
         #  phase A: after the first round (all top-level branches researched), one
         #           "go deeper?" decision per top-level branch, all on the same state;
@@ -229,7 +252,7 @@ class EpisodeState:
         f[4] = float((pv @ rest.T).max()) if len(rest) else 0.0     # branch findings redundancy with others
         f[5] = float(np.clip(1.0 - f[4], 0.0, 1.0)) if len(rest) else 1.0  # novelty
         f[6] = float((pv @ q).mean())                               # findings relevance to question
-        f[7] = len(self.researched) / max(1, len(self.tree.nodes))  # sub-researches done (live-countable)
+        f[7] = len(self.researched) / max(1, self.n_full)           # sub-researches done (live-countable)
         f[8] = 0.0                                                  # reserved (not live-observable)
         f[9] = 1.0                                                  # bias
         return f
