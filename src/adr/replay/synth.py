@@ -6,27 +6,52 @@ import asyncio
 import os
 from pathlib import Path
 
-import yaml
-
-from adr.runner.config import ROOT
+from adr.runner.config import ROOT, load_yaml
 
 DEFAULT_AGENT_CONFIG = ROOT / "configs" / "agents" / "gpt_researcher_gym.yaml"
 MIN_REPORT_CHARS = 2000  # real reports here are ~15-25K chars
 
 
-def apply_agent_env(agent_config: str | Path | None = None) -> None:
+def _resolve_config(path: str | Path) -> Path:
+    p = Path(path).expanduser()
+    if p.is_absolute() or p.exists():
+        return p
+    return ROOT / p
+
+
+def apply_agent_env(agent_config: str | Path | None = None) -> dict[str, str]:
     """Set the same model env (STRATEGIC/SMART/FAST_LLM, EMBEDDING, ...) the live
-    agent used, so the replayed report comes from the same writer."""
+    agent used, so the replayed report comes from the same writer.
+
+    The config is read with ``load_yaml``, so ``extends:`` resolves the way the
+    live agent's config does (the *_opus46 configs only state their backbone
+    on top of a base file). Returns the variables that were set.
+    """
     agent_config = agent_config or os.environ.get("REPLAY_AGENT_CONFIG") or DEFAULT_AGENT_CONFIG
-    cfg = yaml.safe_load(Path(agent_config).read_text(encoding="utf-8")) or {}
-    for k, v in (cfg.get("env") or {}).items():
-        os.environ[str(k)] = str(v)
+    path = _resolve_config(agent_config)
+    if not path.exists():
+        raise FileNotFoundError(f"replay agent config {path} not found (REPLAY_AGENT_CONFIG)")
+    cfg = load_yaml(path)
+    applied = {str(k): str(v) for k, v in (cfg.get("env") or {}).items()}
+    if not any(k.endswith("_LLM") for k in applied):
+        raise ValueError(
+            f"{path} sets no STRATEGIC/SMART/FAST_LLM under env:, so replayed reports "
+            "would come from the fork's default writer, not the live one"
+        )
+    os.environ.update(applied)
+    return applied
 
 
 async def synthesize(query: str, context: str) -> str:
     from gpt_researcher import GPTResearcher
 
+    # The live write_report() of a deep run has no answer format.
+    os.environ.pop("GR_ANSWER_FORMAT", None)
     researcher = GPTResearcher(query=query, report_type="deep")
+    # Detach the deep skill: write_report() records the report into its
+    # trajectory logger and saves it, which would leave one stray
+    # trajectory_<uuid>.json in TRAJECTORY_OUTPUT_DIR per replayed plan.
+    researcher.deep_researcher = None
     # write_report(ext_context=...) is the live path with the context swapped in
     # (skills/writer.py: ``context = ext_context or self.researcher.context``).
     return await researcher.write_report(ext_context=context)
