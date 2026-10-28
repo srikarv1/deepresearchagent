@@ -101,28 +101,93 @@ class ResearchTree:
 
     # ---- replay --------------------------------------------------------------
     def context(self, nodes: Iterable[str]) -> str:
+        """Single-trim approximation of the writer input (kept so existing reward
+        memos stay valid). New reward tables use ``writer_context``."""
         keep = set(nodes)
         ordered = [nid for nid in self.order if nid in keep]
+        items = self._learning_items(keep)
+        items += [self.nodes[nid].context for nid in ordered if self.nodes[nid].context]
+        return "\n".join(trim_to_word_limit(items))
+
+    def writer_context(self, nodes: Iterable[str], pack: str = "tail", max_words: int = MAX_CONTEXT_WORDS) -> str:
+        """The writer input the live agent builds when it researches exactly ``nodes``.
+
+        Mirrors DeepResearchSkill on the legacy evidence path, which is the path
+        GR_ORCHESTRATOR=replaygym runs by default: each deep_research() call
+        returns its own nodes' contexts followed by every expanded node's
+        sub-call, tail-trimmed to ``max_words`` (so a large sub-tree loses its
+        earliest contexts before the final pack); run() then puts the learnings
+        first and packs with GR_FINAL_PACK (``tail`` keeps the end, ``head``
+        fills from the front).
+        """
+        if pack not in PACKS:
+            raise ValueError(f"pack must be one of {PACKS}, got {pack!r}")
+        keep = set(nodes)
+        unknown = keep - self.nodes.keys()
+        if unknown:
+            raise KeyError(f"unknown nodes: {sorted(unknown)[:5]}")
+        if not self.is_valid(keep):
+            raise ValueError("nodes are not a realizable sub-tree: a node's parent is missing")
+        roots = [r for r in self.roots if r in keep]
+        items = self._learning_items(keep) + self._level_items(roots, keep, max_words)
+        packed = pack_head(items, max_words) if pack == "head" else trim_to_word_limit(items, max_words)
+        return "\n".join(packed)
+
+    def _learning_items(self, keep: set[str]) -> list[str]:
         learnings: list[str] = []
         citations: dict[str, str] = {}
         seen: set[str] = set()
-        for nid in ordered:
+        for nid in self.order:
+            if nid not in keep:
+                continue
             n = self.nodes[nid]
             citations.update(n.citations)
-            for l in n.learnings:
-                if l not in seen:
-                    seen.add(l)
-                    learnings.append(l)
-        items = [f"{l} [Source: {citations[l]}]" if citations.get(l) else l for l in learnings]
-        items += [self.nodes[nid].context for nid in ordered if self.nodes[nid].context]
-        return "\n".join(trim_to_word_limit(items))
+            for learning in n.learnings:
+                if learning not in seen:
+                    seen.add(learning)
+                    learnings.append(learning)
+        return [f"{x} [Source: {citations[x]}]" if citations.get(x) else x for x in learnings]
+
+    def _level_items(self, group: list[str], keep: set[str], max_words: int) -> list[str]:
+        """What one deep_research() call over ``group`` returns as its context."""
+        items = [self.nodes[n].context for n in group if self.nodes[n].context]
+        for n in group:
+            kids = [c for c in self.nodes[n].children if c in keep]
+            if kids:
+                items.extend(self._level_items(kids, keep, max_words))
+        return trim_to_word_limit(items, max_words)
 
     def tokens(self, nodes: Iterable[str]) -> int:
         return sum(self.nodes[n].tokens for n in set(nodes))
 
 
+PACKS = ("tail", "head")
+# Version tag of ``writer_context``; reward tables record it so scores built
+# under a different context rule are never mixed.
+WRITER_CONTEXT_RULE = "live-legacy-v1"
+
+
+def _fork_skill():
+    """The fork's deep-research module. Replay uses the agent's own trimming and
+    packing so the replayed writer input is the live one."""
+    try:
+        from gpt_researcher.skills import deep_research
+    except ImportError as exc:  # pragma: no cover - environment dependent
+        raise RuntimeError(
+            "replaying the writer context needs the gpt-researcher fork importable "
+            "(scripts/bootstrap_third_party.sh, then pip install -e third_party/gpt-researcher)"
+        ) from exc
+    return deep_research
+
+
 def trim_to_word_limit(items: list[str], max_words: int = MAX_CONTEXT_WORDS) -> list[str]:
     """Delegate to the agent's own trimming rule so replay and live runs match."""
-    from gpt_researcher.skills.deep_research import trim_context_to_word_limit
+    return _fork_skill().trim_context_to_word_limit(items, max_words=max_words)
 
-    return trim_context_to_word_limit(items, max_words=max_words)
+
+def pack_head(items: list[str], max_words: int = MAX_CONTEXT_WORDS) -> list[str]:
+    """GR_FINAL_PACK=head: the agent's own front-filling packer."""
+    skill = _fork_skill()
+    if not hasattr(skill, "pack_context_head"):
+        raise RuntimeError("GR_FINAL_PACK=head needs pack_context_head from the fork's shreya/branch-replay branch")
+    return skill.pack_context_head(items, max_words=max_words)
