@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import warnings
 from pathlib import Path
 
 from adr.runner.config import ROOT, load_yaml
@@ -27,7 +28,16 @@ def apply_agent_env(agent_config: str | Path | None = None) -> dict[str, str]:
     live agent's config does (the *_opus46 configs only state their backbone
     on top of a base file). Returns the variables that were set.
     """
-    agent_config = agent_config or os.environ.get("REPLAY_AGENT_CONFIG") or DEFAULT_AGENT_CONFIG
+    agent_config = agent_config or os.environ.get("REPLAY_AGENT_CONFIG")
+    if not agent_config:
+        # Trees collected with another backbone would be replayed with this
+        # default writer, so say which one is used.
+        warnings.warn(
+            f"REPLAY_AGENT_CONFIG is not set; replaying with the writer of {DEFAULT_AGENT_CONFIG.name}. "
+            "Point it at the agent config the trees were collected with.",
+            stacklevel=2,
+        )
+        agent_config = DEFAULT_AGENT_CONFIG
     path = _resolve_config(agent_config)
     if not path.exists():
         raise FileNotFoundError(f"replay agent config {path} not found (REPLAY_AGENT_CONFIG)")

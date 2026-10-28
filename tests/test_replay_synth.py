@@ -73,3 +73,16 @@ async def test_synthesize_detaches_the_deep_skill(monkeypatch):
     assert await synth.synthesize("q", "ctx") == "report"
     assert calls == [("deep", None, "ctx")]
     assert "GR_ANSWER_FORMAT" not in os.environ
+
+
+def test_apply_agent_env_warns_when_falling_back_to_the_default(monkeypatch):
+    monkeypatch.delenv("REPLAY_AGENT_CONFIG", raising=False)
+    with pytest.warns(UserWarning, match="REPLAY_AGENT_CONFIG is not set"):
+        synth.apply_agent_env()
+
+
+def test_apply_agent_env_uses_replay_agent_config(monkeypatch):
+    monkeypatch.setenv("REPLAY_AGENT_CONFIG", "configs/agents/gpt_researcher_gym_d2b4_opus46_replay.yaml")
+    applied = synth.apply_agent_env()
+    assert applied["SMART_LLM"] == "anthropic:claude-opus-4-6"
+    assert applied["GR_NODE_CACHE"] == "1"

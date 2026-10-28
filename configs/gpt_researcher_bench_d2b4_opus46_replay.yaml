@@ -1,0 +1,10 @@
+# DRB d2b4 branch-replay trees (Claude Opus 4.6), train split.
+#   adr run --config configs/gpt_researcher_bench_d2b4_opus46_replay.yaml --split train
+#   python scripts/check_replay_exact.py runs/<run>
+extends: gpt_researcher_bench.yaml
+
+run_name: gpt-researcher-bench-d2b4-opus46-replay
+dataset:
+  limit: null
+agent:
+  config: configs/agents/gpt_researcher_bench_d2b4_opus46_replay.yaml

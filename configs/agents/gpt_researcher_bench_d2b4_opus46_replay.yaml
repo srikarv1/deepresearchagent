@@ -1,0 +1,12 @@
+# Branch-replay trees for the DRB DPO pairs: the d2b4 Opus 4.6 bench config
+# with the node cache and independent branches (see
+# gpt_researcher_gym_d2b4_opus46_replay.yaml). Run on the train split only.
+extends: gpt_researcher_bench_d2b4_opus46.yaml
+
+orchestration:
+  policy: legacy
+
+env:
+  GR_NODE_CACHE: "1"
+  GR_BRANCH_INDEPENDENT: "1"
+  GR_FINAL_PACK: tail

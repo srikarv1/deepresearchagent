@@ -1,0 +1,10 @@
+# Gym d2b4 branch-replay trees (Claude Opus 4.6), train split.
+#   adr run --config configs/gpt_researcher_gym_d2b4_opus46_replay.yaml --split train --limit 1
+#   python scripts/check_replay_exact.py runs/<run>
+extends: gpt_researcher_gym.yaml
+
+run_name: gpt-researcher-gym-d2b4-opus46-replay
+dataset:
+  limit: null
+agent:
+  config: configs/agents/gpt_researcher_gym_d2b4_opus46_replay.yaml

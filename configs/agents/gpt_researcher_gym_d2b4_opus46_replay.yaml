@@ -1,0 +1,20 @@
+# Branch-replay trees for the Gym BC labels: d2b4 (4 roots, each expanded once
+# into 2 children; 12 nodes, 2^4 = 16 replayable sub-trees), Claude Opus 4.6 as
+# in the DRB trees, legacy evidence path (what adr.replay.tree replays).
+#   GR_NODE_CACHE=1          every node's learnings, citations, context and cost
+#                            go into trajectory.nodes
+#   GR_BRANCH_INDEPENDENT=1  each branch has its own visited-URL set, so a
+#                            branch's research does not depend on its siblings
+# Check a finished run with scripts/check_replay_exact.py before replaying it.
+extends: gpt_researcher_gym_opus46.yaml
+
+depth: 2
+breadth: 4
+
+orchestration:
+  policy: legacy
+
+env:
+  GR_NODE_CACHE: "1"
+  GR_BRANCH_INDEPENDENT: "1"
+  GR_FINAL_PACK: tail
