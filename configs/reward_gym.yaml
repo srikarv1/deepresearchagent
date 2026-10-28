@@ -1,0 +1,5 @@
+# Reward for the Gym rollout corpus (RewardConfig fields). Same lambda_tok /
+# lambda_lat as the DRB corpus; q_min is the quality floor on the 0-1 scale.
+q_min: 0.53
+lambda_tok: 0.1
+lambda_lat: 0.1

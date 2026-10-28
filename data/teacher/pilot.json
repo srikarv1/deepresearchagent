@@ -1,0 +1,35 @@
+{
+  "teacher": {
+    "n_states": 145,
+    "support_retained": 1.0,
+    "tokens": 11295
+  },
+  "historical": {
+    "n_states": 145,
+    "support_retained": 0.93,
+    "tokens": 26338
+  },
+  "v2q_label": {
+    "n_states": 145,
+    "support_retained": 0.93,
+    "tokens": 26338
+  },
+  "random_same_count": {
+    "n_states": 145,
+    "support_retained": 0.768,
+    "tokens": 13136
+  },
+  "topk_rho_same_tokens": {
+    "n_states": 145,
+    "support_retained": 0.838,
+    "tokens": 11220
+  },
+  "counts": {
+    "bc_train": 136,
+    "bc_dev": 9,
+    "dpo_train": 351,
+    "dpo_dev": 27
+  },
+  "states_skipped_unlabeled": 587,
+  "redundancy": 2
+}

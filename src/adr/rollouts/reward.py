@@ -12,6 +12,23 @@
   Phi   coverage potential; the RandomizedPolicy logs phi_prev / phi_after per
         round, so shaping is read straight from decision meta (Eq. 15-16)
 
+Quality-first variant (``configs/reward_gym_v2.yaml``); every option below
+defaults to the formula above, so existing configs score exactly as before:
+
+    R = alpha_q * z_q(Q) + alpha_g * z_q(G)
+        - lambda_tok * max(0, c_tok / B_tok - 1) - lambda_lat * max(0, c_lat / B_lat - 1)
+        - eps * c_tok / B_tok
+
+  quality_norm: query_z  Q (and G) z-scored over the rollouts of the same
+        query (``normalize_by_query``), so runs are compared on the same
+        question; q_min is not applied
+  goal_source: kpr       G = Gym KPR support rate / 100 from summary.json
+  cost_mode: hinge       cost only above budget; ``cost_tiebreak`` (eps)
+        keeps a small pull toward cheaper runs
+  shaping_in_return: false  shaping is still computed and reported but not
+        added to the total; with gamma = 1 it telescopes to Phi_T - Phi_0,
+        i.e. it scores final coverage rather than shaping it
+
 Budgets default to the run config's ``budget.max_tokens`` /
 ``budget.max_latency_s`` (what the rollout was run under), so the same run
 can be re-scored under a different budget by overriding them here.
@@ -27,6 +44,11 @@ from typing import Any
 import yaml
 
 
+QUALITY_NORMS = ("none", "query_z")
+GOAL_SOURCES = ("file", "kpr")
+COST_MODES = ("linear", "hinge")
+
+
 @dataclass
 class RewardConfig:
     alpha_q: float = 1.0
@@ -39,6 +61,21 @@ class RewardConfig:
     shaping_weight: float = 1.0
     token_budget: int | None = None
     latency_budget_s: float | None = None
+    # Quality-first variant; the defaults reproduce Eq. 14 / 17 above.
+    quality_norm: str = "none"       # none | query_z
+    goal_source: str = "file"        # file | kpr
+    cost_mode: str = "linear"        # linear | hinge
+    cost_tiebreak: float = 0.0       # eps on c_tok / B_tok, added to either cost mode
+    shaping_in_return: bool = True
+
+    def __post_init__(self) -> None:
+        for name, allowed in (
+            ("quality_norm", QUALITY_NORMS),
+            ("goal_source", GOAL_SOURCES),
+            ("cost_mode", COST_MODES),
+        ):
+            if getattr(self, name) not in allowed:
+                raise ValueError(f"{name}={getattr(self, name)!r} is not one of {allowed}")
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "RewardConfig":
@@ -61,6 +98,11 @@ class RewardBreakdown:
     has_quality: bool
     n_rounds: int
     detail: dict[str, Any] = field(default_factory=dict)
+    quality_term: float = 0.0       # what quality added to total
+    goal_term: float = 0.0          # what G added to total
+    cost_term: float = 0.0          # what cost subtracted from total
+    quality_z: float | None = None  # z_q(Q) once normalize_by_query ran
+    goal_z: float | None = None     # z_q(G) once normalize_by_query ran
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -83,8 +125,12 @@ def load_run_budget(run_dir: Path) -> tuple[int | None, float | None]:
 
 
 def load_quality(run_dir: Path, query_id: str) -> float | None:
-    """RACE overall score for ``query_id``: from the run's copied raw results,
-    else from ``summary.json`` (``official.deep_research_bench.race.per_query``)."""
+    """Judge quality for ``query_id`` in whatever scale the bench reports
+    (``compute_reward`` maps 0-100 to [0, 1]). DeepResearch Bench: RACE
+    overall score from the run's copied raw results, else from
+    ``summary.json`` (``official.deep_research_bench.race.per_query``).
+    DeepResearchGym: ``official.deep_research_gym.quality.per_query_normalized``
+    from ``summary.json``."""
     run_dir = Path(run_dir)
     copy = run_dir / "metrics" / "race_raw_results.jsonl"
     if copy.exists():
@@ -100,14 +146,34 @@ def load_quality(run_dir: Path, query_id: str) -> float | None:
             data = json.loads(summary.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             return None
-        race = ((data.get("official") or {}).get("deep_research_bench") or {}).get("race") or {}
+        official = data.get("official") or {}
+        race = (official.get("deep_research_bench") or {}).get("race") or {}
         per_query = race.get("per_query") or {}
         row = per_query.get(str(query_id))
         if isinstance(row, dict) and "overall_score" in row:
             return float(row["overall_score"])
         if isinstance(row, (int, float)):
             return float(row)
+        gym_quality = (official.get("deep_research_gym") or {}).get("quality") or {}
+        gym_row = (gym_quality.get("per_query_normalized") or {}).get(str(query_id))
+        if isinstance(gym_row, (int, float)):
+            return float(gym_row)
     return None
+
+
+def load_kpr_goal(run_dir: Path, query_id: str) -> float:
+    """Gym KPR support rate for ``query_id`` in [0, 1]; missing -> 0."""
+    summary = Path(run_dir) / "metrics" / "summary.json"
+    if not summary.exists():
+        return 0.0
+    try:
+        data = json.loads(summary.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return 0.0
+    kpr = ((data.get("official") or {}).get("deep_research_gym") or {}).get("kpr") or {}
+    row = (kpr.get("per_query") or {}).get(str(query_id))
+    rate = row.get("support_rate") if isinstance(row, dict) else kpr.get("average_support_rate")
+    return float(rate) / 100.0 if rate is not None else 0.0
 
 
 def load_goal(goal_file: Path | None, run_id: str, query_id: str) -> float:
@@ -163,13 +229,20 @@ def compute_reward(
         shaping, n_shaped = shaping_from_rounds(rounds, cfg.gamma)
         shaping *= cfg.shaping_weight
 
-    total = (
-        cfg.alpha_q * q_floor
-        + cfg.alpha_g * float(goal)
-        - cfg.lambda_tok * tok_norm
-        - cfg.lambda_lat * lat_norm
-        + shaping
-    )
+    # With query_z the quality and goal terms depend on the other rollouts of
+    # the query; normalize_by_query adds them once all of them are scored.
+    if cfg.quality_norm == "query_z":
+        quality_term = goal_term = 0.0
+    else:
+        quality_term = cfg.alpha_q * q_floor
+        goal_term = cfg.alpha_g * float(goal)
+    if cfg.cost_mode == "hinge":
+        cost_term = cfg.lambda_tok * max(0.0, tok_norm - 1.0) + cfg.lambda_lat * max(0.0, lat_norm - 1.0)
+    else:
+        cost_term = cfg.lambda_tok * tok_norm + cfg.lambda_lat * lat_norm
+    cost_term += cfg.cost_tiebreak * tok_norm
+
+    total = quality_term + goal_term - cost_term + (shaping if cfg.shaping_in_return else 0.0)
     return RewardBreakdown(
         quality=q,
         quality_floored=q_floor,
@@ -183,7 +256,37 @@ def compute_reward(
         has_quality=q is not None,
         n_rounds=len(rounds),
         detail={"n_shaped_rounds": n_shaped, "token_budget": b_tok, "latency_budget_s": b_lat},
+        quality_term=quality_term,
+        goal_term=goal_term,
+        cost_term=cost_term,
     )
+
+
+def _zscores(values: list[float]) -> list[float]:
+    mu = sum(values) / len(values)
+    sd = (sum((v - mu) ** 2 for v in values) / len(values)) ** 0.5
+    return [0.0 if sd < 1e-9 else (v - mu) / sd for v in values]
+
+
+def normalize_by_query(scored: list[tuple[str, RewardBreakdown]], cfg: RewardConfig) -> None:
+    """Add the per-query z-scored quality and goal terms (``quality_norm:
+    query_z``) to each breakdown in place. A no-op for ``quality_norm: none``.
+    Call once, after every rollout of the corpus is scored; rollouts without a
+    quality score are skipped."""
+    if cfg.quality_norm != "query_z":
+        return
+    groups: dict[str, list[RewardBreakdown]] = {}
+    for qid, b in scored:
+        if b.quality is not None:
+            groups.setdefault(str(qid), []).append(b)
+    for bs in groups.values():
+        qz = _zscores([float(b.quality) for b in bs])  # type: ignore[arg-type]
+        gz = _zscores([b.goal for b in bs])
+        for b, zq, zg in zip(bs, qz, gz):
+            b.quality_z, b.goal_z = zq, zg
+            b.quality_term = cfg.alpha_q * zq
+            b.goal_term = cfg.alpha_g * zg
+            b.total += b.quality_term + b.goal_term
 
 
 def reward_for_run(
@@ -215,7 +318,11 @@ def reward_for_run(
     rounds = list((raw_trajectory or {}).get("rounds") or [])
     return compute_reward(
         quality=load_quality(run_dir, query_id),
-        goal=load_goal(goal_file, run_dir.name, query_id),
+        goal=(
+            load_kpr_goal(run_dir, query_id)
+            if cfg.goal_source == "kpr"
+            else load_goal(goal_file, run_dir.name, query_id)
+        ),
         tokens=tokens,
         latency_s=latency,
         rounds=rounds,

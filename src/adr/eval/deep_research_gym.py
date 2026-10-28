@@ -114,8 +114,10 @@ def _quality(
 ) -> dict[str, Any]:
     try:
         mod = _import_gym_module(gym_root, "eval_quality_async")
+        # Upstream signature is (report_dir, model, num_workers=32). The report
+        # dir is the folder that holds the .q/.a files, not its parent.
         results = _run_async(
-            mod.evaluate_folder_async(export_dir.name, judge_model, str(export_dir.parent)),
+            mod.evaluate_folder_async(str(export_dir), judge_model),
             timeout_s=timeout_s,
         )
     except Exception as e:
@@ -147,10 +149,9 @@ def _kpr(
 
     try:
         mod = _import_gym_module(gym_root, "eval_kpr_async")
+        # Upstream signature is (report_dir, model, key_point_dir, num_workers=32).
         results = _run_async(
-            mod.evaluate_folder_async(
-                export_dir.name, judge_model, str(export_dir.parent), str(key_points)
-            ),
+            mod.evaluate_folder_async(str(export_dir), judge_model, str(key_points)),
             timeout_s=timeout_s,
         )
     except Exception as e:
@@ -171,7 +172,7 @@ def _citation(
     try:
         mod = _import_gym_module(gym_root, "eval_citation_async")
         results = _run_async(
-            mod.evaluate_folder_async(export_dir.name, judge_model, str(export_dir.parent)),
+            mod.evaluate_folder_async(str(export_dir), judge_model),
             timeout_s=timeout_s,
         )
     except Exception as e:

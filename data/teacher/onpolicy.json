@@ -1,0 +1,7 @@
+{
+  "pairs_train": 98,
+  "pairs_dev": 7,
+  "no_clear_preference": 40,
+  "mean_support_gap_frac": 0.276,
+  "chosen_is_teacher": 101
+}

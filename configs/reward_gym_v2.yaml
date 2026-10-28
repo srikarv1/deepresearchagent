@@ -1,0 +1,18 @@
+# Quality-first reward for the Gym rollout corpus (see src/adr/rollouts/reward.py).
+# configs/reward_gym.yaml is the original Eq. 14 / 17 reward and stays as is.
+#
+#   R = alpha_q * z_q(Q) + alpha_g * z_q(KPR)
+#       - lambda_tok * max(0, c_tok / B_tok - 1) - lambda_lat * max(0, c_lat / B_lat - 1)
+#       - cost_tiebreak * c_tok / B_tok
+#
+# z_q: z-score over the rollouts of the same query. Shaping is computed and
+# reported, not added. Budgets come from each run's config (150K tokens, 900 s).
+alpha_q: 1.0
+alpha_g: 0.5
+lambda_tok: 0.1
+lambda_lat: 0.1
+quality_norm: query_z
+goal_source: kpr
+cost_mode: hinge
+cost_tiebreak: 0.1
+shaping_in_return: false

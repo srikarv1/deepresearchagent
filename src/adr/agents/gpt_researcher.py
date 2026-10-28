@@ -86,6 +86,9 @@ _log = logging.getLogger(__name__)
 _ORCH_ENV_MAP = {
     "policy": "GR_ORCHESTRATOR",
     "context_budget_tokens": "GR_CONTEXT_BUDGET_TOKENS",
+    "final_context.mode": "GR_FINAL_CONTEXT",
+    "final_context.learnings_share": "GR_FINAL_LEARNINGS_SHARE",
+    "final_context.item_max_words": "GR_FINAL_ITEM_MAX_WORDS",
     "feature_tau": "GR_FEAT_TAU",
     "feature_tau_c": "GR_FEAT_TAU_C",
     "topk.k": "GR_TOPK_K",

@@ -17,6 +17,8 @@ the online prompt exactly; ``tests/test_bc_pairs.py`` pins that.
 Selection follows the paper (top decile by return) but keeps at least
 ``min_per_query`` trajectories per query so every query is represented, and
 drops rollouts with no report or, by default, no quality score.
+``select_by="quality"`` instead ranks within each query on report quality,
+with cost only as a tie-break (``select_by_quality``).
 """
 
 from __future__ import annotations
@@ -29,7 +31,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from adr.rollouts.fork import load_fork_module
-from adr.rollouts.reward import RewardBreakdown, RewardConfig, reward_for_run
+from adr.rollouts.reward import RewardBreakdown, RewardConfig, normalize_by_query, reward_for_run
 
 
 @dataclass
@@ -287,6 +289,50 @@ def select_top(
     return out, cut
 
 
+def select_by_quality(
+    records: list[RolloutRecord],
+    *,
+    top_frac: float = 0.1,
+    min_per_query: int = 1,
+    max_per_query: int | None = None,
+    quality_eps: float = 0.0,
+) -> tuple[list[RolloutRecord], float | None]:
+    """Per-query selection on report quality, cost only as a tie-break.
+
+    ``select_top`` ranks the whole corpus on R(tau), where the cost terms can
+    outweigh the small within-query quality spread, so it tends to clone the
+    cheapest rollouts. Here each query keeps ``max(min_per_query,
+    ceil(top_frac * n_q))`` rollouts: those within ``quality_eps`` of the
+    query's best quality first, cheapest (tokens) first among them, then the
+    rest by quality. Returns the selection and the lowest selected quality.
+    """
+    scored = [r for r in records if r.reward is not None and r.reward.quality is not None]
+    if not scored:
+        return [], None
+    by_query: dict[str, list[RolloutRecord]] = defaultdict(list)
+    for r in scored:
+        by_query[r.query_id].append(r)
+
+    chosen: list[RolloutRecord] = []
+    for qid, rs in by_query.items():
+        k = max(min_per_query, int(math.ceil(top_frac * len(rs))))
+        if max_per_query is not None:
+            k = min(k, max_per_query)
+        best = max(r.reward.quality for r in rs)  # type: ignore[union-attr]
+        near = [r for r in rs if r.reward.quality >= best - quality_eps]  # type: ignore[union-attr]
+        near.sort(key=lambda r: (r.reward.tokens, -r.reward.quality))  # type: ignore[union-attr]
+        rest = [r for r in rs if r not in near]
+        rest.sort(key=lambda r: (-r.reward.quality, r.reward.tokens))  # type: ignore[union-attr]
+        chosen.extend((near + rest)[:k])
+
+    out = sorted(chosen, key=lambda r: (r.query_id, -r.reward.quality))  # type: ignore[union-attr]
+    cut = min(r.reward.quality for r in out)  # type: ignore[union-attr]
+    return out, cut
+
+
+SELECTORS = ("return", "quality")
+
+
 def build_bc_pairs(
     roots: list[Path],
     out_path: Path,
@@ -300,7 +346,11 @@ def build_bc_pairs(
     final_round_terminate: bool = True,
     snippet_chars: int | None = None,
     goal_file: Path | None = None,
+    select_by: str = "return",
+    quality_eps: float = 0.0,
 ) -> BuildStats:
+    if select_by not in SELECTORS:
+        raise ValueError(f"select_by={select_by!r} is not one of {SELECTORS}")
     reward_cfg = reward_cfg or RewardConfig()
     stats = BuildStats()
     run_dirs = discover_run_dirs(roots)
@@ -316,6 +366,12 @@ def build_bc_pairs(
             if rec.raw is None or not rec.raw.get("rounds"):
                 stats.n_dropped["no_fork_trajectory"] += 1
                 continue
+            if not rec.raw.get("evidence"):
+                # Search failed (e.g. exhausted Tavily keys): the report was
+                # written without retrieval, so its score says nothing about
+                # orchestration and no round can be serialized.
+                stats.n_dropped["no_evidence"] += 1
+                continue
             if require_policy and rec.policy != require_policy:
                 stats.n_dropped[f"policy!={require_policy}"] += 1
                 continue
@@ -329,11 +385,19 @@ def build_bc_pairs(
             stats.policies[str(rec.policy)] += 1
             records.append(rec)
 
+    normalize_by_query([(r.query_id, r.reward) for r in records], reward_cfg)  # type: ignore[misc]
+
     if records:
         totals = [r.reward.total for r in records]  # type: ignore[union-attr]
         stats.reward_min, stats.reward_max = min(totals), max(totals)
 
-    selected, cut = select_top(records, top_frac=top_frac, min_per_query=min_per_query, max_per_query=max_per_query)
+    if select_by == "quality":
+        selected, cut = select_by_quality(
+            records, top_frac=top_frac, min_per_query=min_per_query,
+            max_per_query=max_per_query, quality_eps=quality_eps,
+        )
+    else:
+        selected, cut = select_top(records, top_frac=top_frac, min_per_query=min_per_query, max_per_query=max_per_query)
     stats.reward_cut = cut
     stats.n_selected = len(selected)
     stats.n_queries = len({r.query_id for r in selected})
@@ -368,7 +432,11 @@ def build_bc_pairs(
                 + "\n"
             )
     out_path.with_name(out_path.stem + "_stats.json").write_text(
-        json.dumps({**stats.as_dict(), "reward_config": reward_cfg.__dict__}, indent=2) + "\n",
+        json.dumps(
+            {**stats.as_dict(), "select_by": select_by, "quality_eps": quality_eps,
+             "reward_config": reward_cfg.__dict__},
+            indent=2,
+        ) + "\n",
         encoding="utf-8",
     )
     return stats
