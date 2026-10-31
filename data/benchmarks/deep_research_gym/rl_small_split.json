@@ -1,0 +1,8 @@
+{
+  "dataset": "deep_research_gym",
+  "parent": "data/benchmarks/deep_research_gym/splits.json",
+  "note": "Small corpus for the evidence-replay REINFORCE study, mirroring the DRB pilot size. train: 6 of the 30 parent train ids, evenly spaced by mean Gym quality in bc_pairs_gym_v1_rewards.jsonl (ranks 1, 7, 13, 18, 24, 30, hardest first). val: 2 further parent train ids at ranks 10 and 21 of the same ordering, so both splits have pools in runs/rollouts_gym. test: the 5 pinned Table 2 queries.",
+  "train": ["624340", "437127", "188169", "964162", "568283", "238338"],
+  "val": ["768289", "333606"],
+  "test": ["879779", "923549", "921842", "745702", "471082"]
+}
