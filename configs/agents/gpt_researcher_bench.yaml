@@ -50,6 +50,18 @@ orchestration:
   # tokens (len(text) // 4). Binds topk / extractive / llmlingua / greedy /
   # typesafe / random; shown to prompted. null = no budget.
   context_budget_tokens: 50000
+  final_context:
+    # GR_FINAL_CONTEXT: how the writer context is built from the learnings and
+    # the retained set. ranked = reserve a share of the 25k-word cap for the
+    # learnings, fill the rest with retained items by relevance, round-robin
+    # across sub-questions | recency = old behavior (trim from the end, which
+    # drops the learnings and early evidence once the cap binds).
+    mode: ranked
+    # GR_FINAL_LEARNINGS_SHARE: fraction of the word cap reserved for learnings.
+    learnings_share: 0.2
+    # GR_FINAL_ITEM_MAX_WORDS: per-item head cut so long pages cannot fill the
+    # cap; 0 = no cut.
+    item_max_words: 1500
   # GR_FEAT_TAU: near-duplicate cosine threshold of the per-item features and
   # of the greedy / typesafe dedup (fork default 0.85).
   feature_tau: null

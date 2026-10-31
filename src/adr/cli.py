@@ -210,6 +210,10 @@ def bc_pairs_cmd(
     snippet_chars: int | None = typer.Option(None, "--snippet-chars"),
     no_final_terminate: bool = typer.Option(False, "--no-final-terminate",
                                             help="Do not relabel the last round as TERMINATE"),
+    select_by: str = typer.Option("return", "--select-by",
+                                  help="return (corpus top-frac by R) | quality (per query, cost breaks ties)"),
+    quality_eps: float = typer.Option(0.0, "--quality-eps",
+                                      help="With --select-by quality: qualities within eps of the best count as tied"),
 ) -> None:
     """Score rollouts with R(tau) and write the top-return rounds as BC pairs."""
     import yaml
@@ -231,7 +235,7 @@ def bc_pairs_cmd(
         [Path(p) for p in rollouts], out, reward_cfg=cfg, top_frac=top_frac,
         min_per_query=min_per_query, max_per_query=max_per_query, require_quality=require_quality,
         require_policy=policy or None, final_round_terminate=not no_final_terminate,
-        snippet_chars=snippet_chars, goal_file=goal_file,
+        snippet_chars=snippet_chars, goal_file=goal_file, select_by=select_by, quality_eps=quality_eps,
     )
     table = Table(title=f"bc_pairs -> {out}")
     table.add_column("stat")

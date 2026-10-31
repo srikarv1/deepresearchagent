@@ -11,8 +11,10 @@ from adr.eval.deep_research_bench import read_race_raw_results
 from adr.rollouts.reward import (
     RewardConfig,
     compute_reward,
+    load_kpr_goal,
     load_quality,
     load_run_budget,
+    normalize_by_query,
     reward_for_run,
     shaping_from_rounds,
 )
@@ -102,3 +104,54 @@ def test_reward_for_run_uses_run_budget_and_harness_cost(tmp_path: Path):
     r2 = reward_for_run(run, "51", cfg=RewardConfig(token_budget=50000, latency_budget_s=150.0, shaping=False),
                         raw_trajectory=raw, harness_trajectory=harness)
     assert r2.tokens_norm == pytest.approx(2.0) and r2.latency_norm == pytest.approx(2.0)
+
+
+def test_quality_first_cost_is_hinge_plus_tiebreak_and_shaping_reported_not_added():
+    cfg = RewardConfig(cost_mode="hinge", cost_tiebreak=0.1, shaping_in_return=False,
+                       lambda_tok=1.0, lambda_lat=1.0, token_budget=100_000, latency_budget_s=1000.0)
+    under = compute_reward(quality=0.6, goal=0.0, tokens=50_000, latency_s=500.0,
+                           rounds=_rounds([(0.0, 0.7)]), cfg=cfg)
+    over = compute_reward(quality=0.6, goal=0.0, tokens=150_000, latency_s=500.0, rounds=[], cfg=cfg)
+    assert under.shaping == pytest.approx(0.7)
+    assert under.cost_term == pytest.approx(0.1 * 0.5)               # only the tie-break
+    assert under.total == pytest.approx(0.6 - 0.05)                  # shaping not in the total
+    assert over.cost_term == pytest.approx(1.0 * 0.5 + 0.1 * 1.5)    # 50% over budget
+
+
+def test_query_z_compares_rollouts_within_a_query():
+    cfg = RewardConfig(quality_norm="query_z", alpha_q=1.0, alpha_g=0.5, cost_mode="hinge",
+                       shaping_in_return=False, token_budget=100, latency_budget_s=1.0)
+
+    def score(q, g):
+        return compute_reward(quality=q, goal=g, tokens=10, latency_s=0.1, rounds=[], cfg=cfg)
+
+    # Query A is easy (all high), query B hard (all low): absolute quality would
+    # rank every A run above every B run; z-scores rank within each query.
+    a_hi, a_lo, b_hi, b_lo = score(0.62, 0.9), score(0.58, 0.5), score(0.45, 0.6), score(0.41, 0.2)
+    assert a_lo.total == 0.0  # nothing added before normalization
+    normalize_by_query([("A", a_hi), ("A", a_lo), ("B", b_hi), ("B", b_lo)], cfg)
+    assert a_hi.quality_z == pytest.approx(1.0) and b_lo.quality_z == pytest.approx(-1.0)
+    assert b_hi.total == pytest.approx(a_hi.total) and b_hi.total > a_lo.total
+    assert a_hi.total == pytest.approx(1.0 + 0.5 * 1.0)
+
+
+def test_query_z_is_a_noop_for_the_original_reward():
+    cfg = RewardConfig(token_budget=100, latency_budget_s=1.0, shaping=False)
+    r = compute_reward(quality=0.6, goal=0.0, tokens=0, latency_s=0.0, rounds=[], cfg=cfg)
+    before = r.total
+    normalize_by_query([("A", r)], cfg)
+    assert r.total == before and r.quality_z is None
+
+
+def test_load_kpr_goal_from_gym_summary(tmp_path: Path):
+    (tmp_path / "metrics").mkdir()
+    (tmp_path / "metrics" / "summary.json").write_text(json.dumps({"official": {"deep_research_gym": {
+        "kpr": {"average_support_rate": 40.0, "per_query": {"7": {"support_rate": 75.0}}}}}}))
+    assert load_kpr_goal(tmp_path, "7") == pytest.approx(0.75)
+    assert load_kpr_goal(tmp_path, "8") == pytest.approx(0.40)
+    assert load_kpr_goal(tmp_path / "missing", "7") == 0.0
+
+
+def test_unknown_reward_mode_raises():
+    with pytest.raises(ValueError):
+        RewardConfig(cost_mode="quadratic")

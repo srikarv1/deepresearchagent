@@ -21,6 +21,7 @@ from adr.rollouts.bc_pairs import (  # noqa: E402
     discover_run_dirs,
     load_rollout,
     rows_for_trajectory,
+    select_by_quality,
     select_top,
 )
 from adr.rollouts.reward import RewardConfig  # noqa: E402
@@ -171,6 +172,28 @@ def test_select_top_keeps_min_per_query(tmp_path: Path):
     assert {r.run_id for r in chosen2} == {"51-s0", "52-s0"}
 
 
+def test_select_by_quality_ignores_cost_dominated_return(tmp_path: Path):
+    corpus = tmp_path / "corpus"
+    recs = []
+    # 51-s0 is best but expensive; 51-s1 is cheap and worse. R(tau) with heavy
+    # cost terms prefers s1; quality selection must keep s0.
+    recs += load_rollout(_write_run(corpus, "51", 0, quality=0.50, tokens=95000))
+    recs += load_rollout(_write_run(corpus, "51", 1, quality=0.45, tokens=5000))
+    recs += load_rollout(_write_run(corpus, "51", 2, quality=0.499, tokens=20000))
+    from adr.rollouts.reward import reward_for_run
+
+    cfg = RewardConfig(shaping=False, lambda_tok=1.0)
+    for r in recs:
+        r.reward = reward_for_run(r.run_dir, r.query_id, cfg=cfg, raw_trajectory=r.raw, harness_trajectory=r.harness)
+    top, _ = select_top(recs, top_frac=0.3, min_per_query=1)
+    assert [r.run_id for r in top] == ["51-s1"]
+    chosen, cut = select_by_quality(recs, top_frac=0.3, min_per_query=1)
+    assert [r.run_id for r in chosen] == ["51-s0"] and cut == 0.50
+    # Within eps the cheaper of the near-ties wins.
+    tied, _ = select_by_quality(recs, top_frac=0.3, min_per_query=1, quality_eps=0.005)
+    assert [r.run_id for r in tied] == ["51-s2"]
+
+
 def test_build_bc_pairs_end_to_end(tmp_path: Path):
     corpus = tmp_path / "corpus"
     _write_run(corpus, "51", 0, quality=0.7, tokens=30000)
@@ -178,11 +201,16 @@ def test_build_bc_pairs_end_to_end(tmp_path: Path):
     _write_run(corpus, "52", 0, quality=None)                    # unscored -> dropped
     _write_run(corpus, "53", 0, quality=0.9, report=False)       # failed run -> dropped
     _write_run(corpus, "54", 0, quality=0.9, policy="topk")      # baseline -> dropped
+    noev = _write_run(corpus, "55", 0, quality=0.9)              # search failed -> dropped
+    raw_path = noev / "gpt_researcher" / "55.json"
+    raw = json.loads(raw_path.read_text())
+    raw["evidence"] = {}
+    raw_path.write_text(json.dumps(raw))
     out = tmp_path / "bc" / "bc_pairs.jsonl"
     stats = build_bc_pairs([corpus], out, top_frac=0.5, min_per_query=1)
 
-    assert stats.n_run_dirs == 5 and stats.n_loaded == 5
-    assert stats.n_dropped == {"no_report": 1, "policy!=random": 1, "no_quality_score": 1}
+    assert stats.n_run_dirs == 6 and stats.n_loaded == 6
+    assert stats.n_dropped == {"no_report": 1, "policy!=random": 1, "no_quality_score": 1, "no_evidence": 1}
     assert stats.n_selected == 1 and stats.n_queries == 1
     assert stats.n_rows == 2  # two rounds of 51-s0
     rows = [json.loads(l) for l in out.read_text().splitlines()]
