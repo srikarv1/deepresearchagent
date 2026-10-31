@@ -114,11 +114,10 @@ def is_complete(run_dir: Path, query_id: str) -> bool:
 
 
 def is_evaluated(run_dir: Path, bench: str = "deep_research_bench") -> bool:
-    """True once the official judge for ``bench`` has scored this rollout.
-
+    """True once the official judge for ``bench`` has scored this rollout:
     ``summary.json`` carries ``official.<bench>.official == True``. The DRB
-    per-query RACE copy also counts, for corpora judged before that block existed.
-    """
+    per-query RACE copy also counts, for corpora judged before the summary
+    block existed."""
     if bench == "deep_research_bench" and (run_dir / "metrics" / "race_raw_results.jsonl").exists():
         return True
     summary = run_dir / "metrics" / "summary.json"

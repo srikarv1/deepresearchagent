@@ -95,7 +95,7 @@ Only works if the gpt-researcher fork was bootstrapped on a branch with orchestr
 
 The policy and every knob live in the agent YAML, one per dataset, under `orchestration:` with a comment per parameter (each maps to one `GR_*` variable of the fork):
 
-- DeepResearchGym: `configs/agents/gpt_researcher_gym.yaml`
+- DeepResearchGym: `configs/agents/gpt_researcher_gym.yaml` (also used by `adr rollouts -c configs/rollouts_gym_random.yaml`; pinned split in `data/benchmarks/deep_research_gym/splits.json`)
 - DeepResearch Bench: `configs/agents/gpt_researcher_bench.yaml` (depth 3 / breadth 4, also used by `adr rollouts`)
 - BrowseComp-Plus: `configs/agents/gpt_researcher_browsecomp_plus.yaml`
 

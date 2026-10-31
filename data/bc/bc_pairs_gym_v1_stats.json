@@ -1,0 +1,26 @@
+{
+  "n_run_dirs": 300,
+  "n_loaded": 300,
+  "n_dropped": {},
+  "n_selected": 46,
+  "n_rows": 100,
+  "n_queries": 30,
+  "reward_min": 0.37356182222222223,
+  "reward_max": 0.7375643999999999,
+  "reward_cut": 0.6467514777777778,
+  "policies": {
+    "random": 300
+  },
+  "reward_config": {
+    "alpha_q": 1.0,
+    "alpha_g": 0.0,
+    "lambda_tok": 0.1,
+    "lambda_lat": 0.1,
+    "q_min": 0.53,
+    "gamma": 1.0,
+    "shaping": true,
+    "shaping_weight": 1.0,
+    "token_budget": null,
+    "latency_budget_s": null
+  }
+}
