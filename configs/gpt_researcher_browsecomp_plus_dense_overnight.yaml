@@ -1,0 +1,50 @@
+run_name: bcp-overnight-dense
+output_dir: runs
+seed: 17
+concurrency: 1
+
+dataset:
+  name: browsecomp_plus
+  language: en
+  split: test
+  # Overnight meeting slice, not the 166-query hold-out and not official 830.
+  limit: 4
+  query_ids: []
+
+agent:
+  name: gpt_researcher
+  config: configs/agents/gpt_researcher_browsecomp_plus_overnight.yaml
+
+llm:
+  provider: mock
+  model: unused
+search:
+  backend: browsecomp_plus
+  retriever: dense
+  index_path: third_party/bcp_indexes/bm25
+  dense_path: third_party/bcp_indexes/qwen3-embedding-8b
+  embed_model: qwen3-embedding:8b
+  top_k: 5
+
+budget:
+  max_steps: 32
+  max_searches: 64
+  max_reads: 128
+  max_tokens: 400000
+  max_latency_s: 1800.0
+  max_evidence: 512
+  enforce: false
+
+eval:
+  official_benches: []
+  # gpt-4.1 is the official BCP judge; Foundry quota only has gpt-5-mini.
+  # Caption Acc as unofficial / gpt-5-mini. Do not quote as the 830-number.
+  browsecomp_plus:
+    judge:
+      provider: openai
+      model: gpt-5-mini
+      api_key_env: OPENAI_API_KEY
+      base_url: null
+      temperature: 0.0
+      max_output_tokens: 800
+      concurrency: 4

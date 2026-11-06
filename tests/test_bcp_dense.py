@@ -10,6 +10,7 @@ import pytest
 
 from adr.eval.repos import find_bcp_dense_index
 from adr.tools.bcp_dense import (
+    DEFAULT_OLLAMA_URL,
     DEFAULT_QUERY_PREFIX,
     DenseCorpusIndex,
     NumpyDenseIndex,
@@ -17,6 +18,7 @@ from adr.tools.bcp_dense import (
     dense_index_looks_valid,
     l2_normalize,
     load_tevatron_shards,
+    normalize_ollama_url,
 )
 from adr.tools.bcp_server import make_server
 from adr.tools.browsecomp_plus import BrowseCompPlusSearch
@@ -158,6 +160,13 @@ def test_find_bcp_dense_index(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     assert find_bcp_dense_index().path == good.resolve()
 
 
+def test_normalize_ollama_url_adds_scheme_to_host_port():
+    assert normalize_ollama_url("127.0.0.1:11434") == "http://127.0.0.1:11434"
+    assert normalize_ollama_url("http://127.0.0.1:11434/") == "http://127.0.0.1:11434"
+    assert normalize_ollama_url(None) == DEFAULT_OLLAMA_URL
+    assert normalize_ollama_url("") == DEFAULT_OLLAMA_URL
+
+
 def test_ollama_embedder_posts_official_prefix(monkeypatch: pytest.MonkeyPatch):
     seen: dict = {}
 
@@ -177,9 +186,10 @@ def test_ollama_embedder_posts_official_prefix(monkeypatch: pytest.MonkeyPatch):
         return _Resp()
 
     monkeypatch.delenv("ADR_BCP_QUERY_PREFIX", raising=False)
+    monkeypatch.setenv("OLLAMA_HOST", "127.0.0.1:11434")
     monkeypatch.setattr("adr.tools.bcp_dense.urlopen", fake_urlopen)
     vec = OllamaEmbedder(model="qwen3-embedding:0.6b", prefix=None).embed_query("hello")
-    assert seen["url"].endswith("/api/embed")
+    assert seen["url"] == "http://127.0.0.1:11434/api/embed"
     assert seen["body"]["input"] == DEFAULT_QUERY_PREFIX + "hello"
     assert vec == pytest.approx([0.6, 0.8])
 
