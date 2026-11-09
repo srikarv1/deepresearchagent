@@ -32,6 +32,14 @@ def _import_gym_module(gym_root: Path, name: str) -> Any:
         raise ImportError(f"Cannot load {script}")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
+    # Upstream fires up to 32 judge calls at once on a client with 2 retries, so
+    # a long report or many key points trips the deployment's token-per-minute
+    # limit (429). More retries let the SDK back off; scoring is unchanged. The
+    # SDK's 600 s default timeout lets a request that never answers stall a judge
+    # for an hour across those retries, so each attempt is capped at 300 s.
+    client = getattr(mod, "client", None)
+    if client is not None and hasattr(client, "with_options"):
+        mod.client = client.with_options(max_retries=10, timeout=300)
     return mod
 
 
@@ -171,12 +179,15 @@ def _citation(
 ) -> dict[str, Any]:
     try:
         mod = _import_gym_module(gym_root, "eval_citation_async")
+        # Unlike quality / KPR, upstream returns (per_query_results, average).
         results = _run_async(
             mod.evaluate_folder_async(str(export_dir), judge_model),
             timeout_s=timeout_s,
         )
     except Exception as e:
         return {"n": 0, "error": str(e)}
+    if isinstance(results, (tuple, list)) and results and isinstance(results[0], dict):
+        results = results[0]
 
     path = out_dir / f"faithfullness_{judge_model}.json"
     path.write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")

@@ -89,6 +89,22 @@ def test_citation_scaled_to_percent():
     assert aggregate_gym_citation(results)["average_citation_score"] == pytest.approx(75.0)
 
 
+def test_citation_unpacks_upstream_results_and_average(tmp_path: Path):
+    from adr.eval.deep_research_gym import _citation
+
+    # Upstream eval_citation_async returns (per_query_results, average_score).
+    (tmp_path / "eval_citation_async.py").write_text(
+        "async def evaluate_folder_async(report_dir, model):\n"
+        "    return {'a': {'score': 0.5}, 'b': {'score': 1.0}}, 0.75\n",
+        encoding="utf-8",
+    )
+    out = _citation(tmp_path, tmp_path, tmp_path, "judge", None)
+    assert out["n"] == 2
+    assert out["average_citation_score"] == pytest.approx(75.0)
+    saved = json.loads((tmp_path / "faithfullness_judge.json").read_text(encoding="utf-8"))
+    assert saved == {"a": {"score": 0.5}, "b": {"score": 1.0}}
+
+
 def test_headline_scores_flattens_both_benches():
     flat = headline_scores(
         {

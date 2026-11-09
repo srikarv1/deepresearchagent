@@ -12,6 +12,7 @@ per-query means of what the harness and the official Gym judges recorded:
   Latency (s)                     mean_wall_s
   Calls                           mean_n_searches
   Q per 1K t                      Overall / Tokens (K)
+  Citation (--citation only)      citation.average_citation_score (0-100)
 
 This reproduces the existing PILOT (BC) row from runs/eval_gym_table_learned
 (54.7 overall, 300.2 K tokens, 535.3 s, 50 calls). With ``--baseline`` it also
@@ -33,22 +34,27 @@ from pathlib import Path
 
 CRITERIA = ("Clarity", "Breadth", "Depth", "Support")
 COLUMNS = ("Clarity", "Breadth", "Depth", "Support", "KPR", "Overall", "Tokens (K)", "Latency (s)", "Calls", "Q per 1K t")
+CITATION_COLUMNS = COLUMNS[:6] + ("Citation",) + COLUMNS[6:]
 DECIMALS = {"Tokens (K)": 1, "Latency (s)": 1, "Calls": 0, "Q per 1K t": 3}
 
 
-def query_rows(corpus: Path) -> dict[str, dict[str, float]]:
-    """Per-query Table 3 values; runs without both Gym judges are skipped."""
+def query_rows(corpus: Path, citation: bool = False) -> dict[str, dict[str, float]]:
+    """Per-query Table 3 values; runs without both Gym judges (and, with
+    ``citation``, without a citation score) are skipped."""
     rows: dict[str, dict[str, float]] = {}
     for summary in sorted(corpus.glob("*-s*/metrics/summary.json")):
         data = json.loads(summary.read_text(encoding="utf-8"))
         gym = (data.get("official") or {}).get("deep_research_gym") or {}
         quality, kpr = gym.get("quality") or {}, gym.get("kpr") or {}
-        if not quality or not kpr:
+        cite = gym.get("citation") or {}
+        if not quality.get("n") or not kpr.get("n") or (citation and not cite.get("n")):
             continue
         crit = quality.get("per_criterion") or {}
         row = {c: float(crit[c]["average_rating"]) for c in CRITERIA}
         row["KPR"] = float(kpr["average_support_rate"])
         row["Overall"] = float(quality["average_normalized_score"])
+        if citation:
+            row["Citation"] = float(cite["average_citation_score"])
         row["Tokens (K)"] = float(data["mean_tokens"]) / 1000.0
         row["Latency (s)"] = float(data["mean_wall_s"])
         row["Calls"] = float(data["mean_n_searches"])
@@ -58,7 +64,8 @@ def query_rows(corpus: Path) -> dict[str, dict[str, float]]:
 
 
 def mean_row(rows: dict[str, dict[str, float]]) -> dict[str, float]:
-    out = {c: st.mean(r[c] for r in rows.values()) for c in COLUMNS}
+    cols = CITATION_COLUMNS if all("Citation" in r for r in rows.values()) else COLUMNS
+    out = {c: st.mean(r[c] for r in rows.values()) for c in cols}
     # Q per 1K t of the means, as in the paper's existing rows.
     out["Q per 1K t"] = out["Overall"] / out["Tokens (K)"]
     return out
@@ -78,28 +85,31 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("corpora", nargs="+", help='"Label=path/to/corpus"')
     ap.add_argument("--baseline", help="Label of the corpus to pair the others against")
+    ap.add_argument("--citation", action="store_true",
+                    help="Add a Citation column (needs the Gym citation judge in every run)")
     args = ap.parse_args()
+    columns = CITATION_COLUMNS if args.citation else COLUMNS
 
     corpora: dict[str, dict[str, dict[str, float]]] = {}
     for spec in args.corpora:
         label, _, path = spec.partition("=")
         if not path:
             raise SystemExit(f"expected Label=path, got {spec!r}")
-        rows = query_rows(Path(path))
+        rows = query_rows(Path(path), citation=args.citation)
         if not rows:
-            raise SystemExit(f"{path}: no run with both Gym quality and KPR scores")
+            raise SystemExit(f"{path}: no run with all the requested Gym judge scores")
         corpora[label] = rows
 
-    print("| Approach | n | " + " | ".join(COLUMNS) + " |")
-    print("|---|---|" + "---|" * len(COLUMNS))
+    print("| Approach | n | " + " | ".join(columns) + " |")
+    print("|---|---|" + "---|" * len(columns))
     for label, rows in corpora.items():
         m = mean_row(rows)
-        print(f"| {label} | {len(rows)} | " + " | ".join(fmt(c, m[c]) for c in COLUMNS) + " |")
+        print(f"| {label} | {len(rows)} | " + " | ".join(fmt(c, m[c]) for c in columns) + " |")
 
     print("\nLaTeX (paste into Table 3):")
     for label, rows in corpora.items():
         m = mean_row(rows)
-        print(f"{label} & " + " & ".join(fmt(c, m[c]) for c in COLUMNS) + r" \\")
+        print(f"{label} & " + " & ".join(fmt(c, m[c]) for c in columns) + r" \\")
 
     if not args.baseline:
         return
@@ -113,7 +123,8 @@ def main() -> None:
         print(f"\n{label} vs {args.baseline} (paired over {len(shared)} queries)")
         print("| Metric | mean diff | 95% CI | better / worse / tie |")
         print("|---|---|---|---|")
-        for col in ("Overall", "KPR", "Support", "Tokens (K)", "Latency (s)"):
+        paired = ("Overall", "KPR", "Support") + (("Citation",) if args.citation else ()) + ("Tokens (K)", "Latency (s)")
+        for col in paired:
             diffs = [rows[q][col] - base[q][col] for q in shared]
             lo, hi = bootstrap_ci(diffs) if len(diffs) > 1 else (diffs[0], diffs[0])
             sign = -1 if col in ("Tokens (K)", "Latency (s)") else 1
