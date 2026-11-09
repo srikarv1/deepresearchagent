@@ -296,6 +296,12 @@ class GPTResearcherAgent:
         traj.final_stats.update(self._extra_stats(gtraj, wall))
         traj.final_stats["orchestration"] = dict(self._orchestration_effective)
         traj.final_stats["retrieved_docids"] = self._retrieved_docids(researcher, gtraj)
+        # Which models actually ran and what each usage tag (e.g. the prompted
+        # policy's "orchestrator" calls) cost, from the fork's TokenTracker.
+        for key, attr in (("tokens_by_model", "per_model_totals"), ("tokens_by_tag", "per_usage_totals")):
+            traj.final_stats[key] = {
+                name: dict(row) for name, row in (getattr(TokenTracker, attr, None) or {}).items()
+            }
         traj.final_stats["_label_items"] = [
             {
                 "id": iid,

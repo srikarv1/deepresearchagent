@@ -1,0 +1,55 @@
+# DeepResearchGym pilot on GPT-6.1 Sol: no pruning (none) vs prompted
+# orchestration, driven by `adr rollouts` with one seed per query.
+#
+#   adr rollouts -c configs/gym_sol_pilot.yaml --out runs/gym_sol_pilot/<policy> \
+#       --policy <none|prompted> --n-seeds 1 --seed-base 0 --query-ids <ids>
+#
+# Same as configs/gpt_researcher_gym.yaml except: the agent config points every
+# LLM at the Sol deployment, the dataset has no limit or split (the pilot ids are
+# outside splits.json and the old limit of 10 would drop some), and judging runs
+# afterwards with scripts/gym_sol_pilot_judge.sh from the .env (judge)
+# credentials, since the generation env points OPENAI_* at 202610-deepres.
+run_name: gym-sol-pilot
+output_dir: runs
+seed: 17
+# gpt-researcher's trackers are process-global; keep this at 1.
+concurrency: 1
+
+dataset:
+  name: deep_research_gym
+  language: en
+  limit: null
+  query_ids: []
+
+agent:
+  name: gpt_researcher
+  config: configs/agents/gpt_researcher_gym_gptsol.yaml
+
+# Not used by gpt_researcher (it brings its own stack) but required by the
+# runner. mock keeps the harness from opening a second client.
+llm:
+  provider: mock
+  model: unused
+search:
+  backend: mock
+  top_k: 5
+
+# Budgets are recorded, not enforced: gpt-researcher does not consult them.
+budget:
+  max_steps: 32
+  max_searches: 64
+  max_reads: 128
+  max_tokens: 400000
+  max_latency_s: 1200.0
+  max_evidence: 512
+  enforce: false
+
+eval:
+  official_benches: []
+  # Every Gym judge on gpt-5-mini, as in the earlier Gym runs; citation (which
+  # crawls each cited URL live with crawl4ai) is on for this pilot.
+  deep_research_gym:
+    judge_model: gpt-5-mini
+    run_quality: true
+    run_kpr: true
+    run_citation: true
