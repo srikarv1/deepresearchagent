@@ -16,7 +16,7 @@
 # Policy knobs (budget, thresholds, TypeSafe model) come from the `orchestration:`
 # section of the dataset's agent YAML (configs/agents/gpt_researcher_gym.yaml or
 # gpt_researcher_bench.yaml). This script only sets GR_ORCHESTRATOR per row. A
-# GR_* exported in the shell before the sweep (e.g. GR_STOP_PATIENCE=3 bash
+# GR_* exported in the shell before the sweep (e.g. GR_STOP_PRUNE_GAIN=0.02 bash
 # scripts/sweep_policies.sh) is passed through and overrides the YAML for every
 # row it applies to.
 #
@@ -109,9 +109,9 @@ _POLICY_ENVS=(
   GR_LLMLINGUA_MODEL
   GR_GREEDY_MIN_GAIN
   GR_GREEDY_LAMBDA
-  GR_STOP_GAIN_THRESHOLD
+  GR_STOP_PRUNE_GAIN
+  GR_STOP_SATISFACTION
   GR_STOP_MIN_ROUNDS
-  GR_STOP_PATIENCE
   GR_STOP_RETAIN
   GR_TYPESAFE_MODEL
   GR_TYPESAFE_KEEP_MIN

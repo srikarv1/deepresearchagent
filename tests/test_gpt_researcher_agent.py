@@ -466,7 +466,7 @@ def test_orchestration_env_maps_nested_keys_and_skips_null():
             "context_budget_tokens": 50000,
             "feature_tau": None,
             "greedy": {"min_gain": 0.0, "lambda": 1.0},
-            "heuristic_stop": {"patience": 2, "retain": "filter", "gain_threshold": None},
+            "heuristic_stop": {"satisfaction": 0.8, "retain": "filter", "prune_gain": None},
             "random": {"seed": 17, "params": {"keep_ratio": 0.4, "stop": "phi"}},
             "typesafe": {"model": "jev-1.13.0", "keep_min": 0.5},
         }
@@ -476,7 +476,7 @@ def test_orchestration_env_maps_nested_keys_and_skips_null():
         "GR_CONTEXT_BUDGET_TOKENS": "50000",
         "GR_GREEDY_MIN_GAIN": "0.0",
         "GR_GREEDY_LAMBDA": "1.0",
-        "GR_STOP_PATIENCE": "2",
+        "GR_STOP_SATISFACTION": "0.8",
         "GR_STOP_RETAIN": "filter",
         "GR_ORCH_SEED": "17",
         "GR_RANDOM_PARAMS": '{"keep_ratio": 0.4, "stop": "phi"}',
@@ -519,7 +519,7 @@ def test_prepare_import_exports_yaml_defaults_and_lets_explicit_env_win(
     for name in _ORCH_NAMES:
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("GR_ORCHESTRATOR", "heuristic_stop")  # row selected by sweep_policies.sh
-    monkeypatch.setenv("GR_STOP_PATIENCE", "")  # empty counts as unset
+    monkeypatch.setenv("GR_STOP_SATISFACTION", "")  # empty counts as unset
     monkeypatch.setenv("GR_GREEDY_MIN_GAIN", "0.1")  # a knob overridden from the shell
     monkeypatch.setattr(sys, "path", list(sys.path))
 
@@ -530,7 +530,7 @@ def test_prepare_import_exports_yaml_defaults_and_lets_explicit_env_win(
                 "policy": "greedy",
                 "context_budget_tokens": 50000,
                 "greedy": {"min_gain": 0.0, "lambda": 0.5},
-                "heuristic_stop": {"patience": 2},
+                "heuristic_stop": {"satisfaction": 0.8},
             },
             "env": {"GR_GREEDY_LAMBDA": "0.25"},
         }
@@ -540,7 +540,7 @@ def test_prepare_import_exports_yaml_defaults_and_lets_explicit_env_win(
 
     assert os.environ["GR_ORCHESTRATOR"] == "heuristic_stop"  # explicit env won
     assert os.environ["GR_CONTEXT_BUDGET_TOKENS"] == "50000"  # YAML default exported
-    assert os.environ["GR_STOP_PATIENCE"] == "2"  # empty env value did not block the default
+    assert os.environ["GR_STOP_SATISFACTION"] == "0.8"  # empty env value did not block the default
     assert os.environ["GR_GREEDY_MIN_GAIN"] == "0.1"  # explicit knob override won
     assert os.environ["GR_GREEDY_LAMBDA"] == "0.25"  # the raw env block always wins
     by_msg = {r.message: r.levelno for r in caplog.records}
@@ -553,3 +553,35 @@ def test_prepare_import_exports_yaml_defaults_and_lets_explicit_env_win(
     assert agent._orchestration_effective["GR_ORCHESTRATOR"] == "heuristic_stop"
     assert agent._orchestration_effective["GR_GREEDY_LAMBDA"] == "0.25"
     assert "GR_FEAT_TAU" not in agent._orchestration_effective
+
+
+def test_pruned_frontier_nodes_become_dropped_subtasks(fake_gpt_researcher: Path, gym_query, tmp_path: Path):
+    """The fork marks a frontier node the policy did not expand as
+    status="pruned"; the harness subtask vocabulary calls that "dropped"."""
+    from adr.agents.gpt_researcher import GPTResearcherAgent
+    from adr.core.types import Budget, ResearchTask
+
+    agent = GPTResearcherAgent({"repo_path": None})
+    gtraj = types.SimpleNamespace(
+        evidence={},
+        rounds=[
+            types.SimpleNamespace(
+                round_id=1,
+                new_item_ids=[],
+                retained_ids=[],
+                decision=types.SimpleNamespace(type="prune", kept_item_ids=[], pruned_item_ids=[]),
+                frontier=[
+                    types.SimpleNamespace(node_id="n1", subquery="goal 1", parent_subquery="q", status="open"),
+                    types.SimpleNamespace(node_id="n2", subquery="goal 2", parent_subquery="q", status="pruned"),
+                    types.SimpleNamespace(node_id="n3", subquery="goal 3", parent_subquery="q", status="completed"),
+                ],
+                round_cost=types.SimpleNamespace(tokens_input=1, tokens_output=1, latency_seconds=0.1, llm_calls=1, search_calls=1),
+            )
+        ],
+        synthesis_cost=types.SimpleNamespace(tokens_input=1, tokens_output=1, latency_seconds=0.1, llm_calls=1),
+        final_context="",
+    )
+    task = ResearchTask(query=gym_query, budget=Budget())
+    state = agent._build_state(task, gtraj, "report")
+    assert {sid: st.status for sid, st in state.subtasks.items()} == {"n1": "active", "n2": "dropped", "n3": "done"}
+    assert state.steps[0].extra["decision_type"] == "prune"
