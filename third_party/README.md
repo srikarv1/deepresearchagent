@@ -21,4 +21,24 @@ Two directory names are accepted for the Gym judges because forks rename the rep
 
 Upstreams: [Ayanami0730/deep_research_bench](https://github.com/Ayanami0730/deep_research_bench) and [cxcscmu/deepresearch_benchmarking](https://github.com/cxcscmu/deepresearch_benchmarking). The `gpt_researcher` row is the agent under test, not a judge: [WilliamOdinson/gpt-researcher](https://github.com/WilliamOdinson/gpt-researcher). Override with `GR_REPO_URL` or `ADR_GR_DIR`.
 
+## Pinned GPT-Researcher fork for BC/DPO transfer evaluation
+
+The DeepResearchBench BC/DPO transfer experiment uses the following exact
+checkout. The checkout itself remains ignored; this tracked record is the
+reproducibility pin.
+
+- Remote: `https://github.com/WilliamOdinson/gpt-researcher.git`
+- Branch: `srikar/sol-pilot`
+- Commit: `a0898c838d738c0b2cf24f607c989dd4d90137e9`
+
+Clone it directly without invoking the all-repository bootstrap script:
+
+```bash
+git clone --branch srikar/sol-pilot \
+  https://github.com/WilliamOdinson/gpt-researcher.git \
+  third_party/gpt-researcher
+git -C third_party/gpt-researcher checkout \
+  a0898c838d738c0b2cf24f607c989dd4d90137e9
+```
+
 The harness writes reports in each repo's official format, invokes their scripts as subprocesses, and parses their result files back into scores.

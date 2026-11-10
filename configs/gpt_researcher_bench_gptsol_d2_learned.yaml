@@ -1,0 +1,53 @@
+# Generation-only configuration for the DeepResearchBench BC/DPO transfer
+# experiment. Official RACE/FACT judging is deliberately run later, in a
+# separate process whose OPENAI_* variables target the GPT-5-mini resource.
+run_name: drb-sol-d2-learned
+output_dir: runs
+seed: 17
+concurrency: 1
+
+dataset:
+  name: deep_research_bench
+  language: en
+  limit: 15
+  query_ids:
+    - "61"
+    - "62"
+    - "63"
+    - "64"
+    - "65"
+    - "66"
+    - "67"
+    - "68"
+    - "69"
+    - "70"
+    - "71"
+    - "72"
+    - "73"
+    - "74"
+    - "75"
+
+agent:
+  name: gpt_researcher
+  config: configs/agents/gpt_researcher_bench_gptsol_d2_learned.yaml
+
+# GPT-Researcher owns generation and Tavily access. These mock entries satisfy
+# the harness without constructing a second paid client.
+llm:
+  provider: mock
+  model: unused
+search:
+  backend: mock
+  top_k: 5
+
+budget:
+  max_steps: 32
+  max_searches: 64
+  max_reads: 128
+  max_tokens: 400000
+  max_latency_s: 1200.0
+  max_evidence: 512
+  enforce: false
+
+eval:
+  official_benches: []

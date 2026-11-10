@@ -1,0 +1,49 @@
+# DeepResearchBench BC/DPO transfer evaluation using Srikar's instrumented
+# GPT-Researcher fork. The BC and DPO arms share this configuration; select the
+# pretrained adapter at launch with GR_ORCH_LLM_MODEL=pilot-bc-teacher or
+# GR_ORCH_LLM_MODEL=pilot-dpo-teacher and provide its OpenAI-compatible endpoint
+# through GR_ORCH_LLM_BASE_URL. No adapter is trained by this configuration.
+name: gpt_researcher
+
+# Use only the isolated checkout under this repository. This avoids resolution
+# through ADR_GR_DIR or an unrelated sibling checkout.
+repo_path: third_party/gpt-researcher
+
+# DeepResearchSkill knobs (exported as DEEP_RESEARCH_* by the harness).
+depth: 2
+breadth: 4
+concurrency: 1
+
+scraper: bs
+retriever: tavily
+max_search_results_per_query: 5
+max_scraper_workers: 4
+
+trajectory_dir: runs/_gpt_researcher_raw
+keep_trajectory_files: true
+
+# Fail before research if the learned endpoint is missing or a stale model name
+# is selected. The endpoint and adapter remain environment-controlled per arm.
+require_orchestrator_base_url: true
+allowed_orchestrator_models:
+  - pilot-bc-teacher
+  - pilot-dpo-teacher
+
+orchestration:
+  policy: learned
+  context_budget_tokens: 50000
+  final_context:
+    mode: ranked
+    learnings_share: 0.2
+    item_max_words: 1500
+
+# These values are applied after shell orchestration variables. Repeating the
+# policy here intentionally prevents a stale GR_ORCHESTRATOR from silently
+# changing this experiment away from the learned arm. Adapter endpoint/model
+# variables remain external so BC and DPO can be selected independently.
+env:
+  GR_ORCHESTRATOR: learned
+  STRATEGIC_LLM: "openai:gpt-6.1-sol-1gtjfzlv8i"
+  SMART_LLM: "openai:gpt-6.1-sol-1gtjfzlv8i"
+  FAST_LLM: "openai:gpt-6.1-sol-1gtjfzlv8i"
+  EMBEDDING: "openai:text-embedding-3-small-v1-651fgh"

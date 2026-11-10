@@ -188,6 +188,7 @@ class GPTResearcherAgent:
         self._apply_orchestration()
         for k, v in (self.config.get("env") or {}).items():
             os.environ[str(k)] = str(v)
+        self._validate_orchestrator_endpoint()
         # Snapshot after the raw env block so final_stats reports what the
         # fork will actually read.
         self._orchestration_effective = {
@@ -199,6 +200,27 @@ class GPTResearcherAgent:
         if traj_dir:
             os.environ["TRAJECTORY_OUTPUT_DIR"] = str(Path(traj_dir).expanduser().resolve())
         self._imported = True
+
+    def _validate_orchestrator_endpoint(self) -> None:
+        """Validate experiment-specific learned-model requirements before import.
+
+        Most agent configurations omit these guards. Dedicated learned-policy
+        experiments can use them to prevent a missing adapter from silently
+        falling back to the research model, or a stale adapter name from
+        selecting the wrong arm.
+        """
+        allowed = [str(x) for x in (self.config.get("allowed_orchestrator_models") or [])]
+        model = os.environ.get("GR_ORCH_LLM_MODEL", "").strip()
+        if allowed and model not in allowed:
+            choices = ", ".join(allowed)
+            raise RuntimeError(
+                "GR_ORCH_LLM_MODEL must select an approved learned adapter "
+                f"({choices}); got {model or 'unset'}"
+            )
+        if self.config.get("require_orchestrator_base_url") and not os.environ.get(
+            "GR_ORCH_LLM_BASE_URL", ""
+        ).strip():
+            raise RuntimeError("GR_ORCH_LLM_BASE_URL is required for the learned adapter")
 
     def _apply_orchestration(self) -> None:
         """Export the ``orchestration:`` section as GR_* defaults. A variable
@@ -295,6 +317,10 @@ class GPTResearcherAgent:
         traj = state.trajectory()
         traj.final_stats.update(self._extra_stats(gtraj, wall))
         traj.final_stats["orchestration"] = dict(self._orchestration_effective)
+        # Record arm identity for provenance without persisting endpoint or key.
+        orchestrator_model = os.environ.get("GR_ORCH_LLM_MODEL", "").strip()
+        if orchestrator_model:
+            traj.final_stats["orchestrator_model"] = orchestrator_model
         traj.final_stats["retrieved_docids"] = self._retrieved_docids(researcher, gtraj)
         # Which models actually ran and what each usage tag (e.g. the prompted
         # policy's "orchestrator" calls) cost, from the fork's TokenTracker.

@@ -506,9 +506,10 @@ def test_shipped_agent_configs_validate_against_the_mapping():
     for path in paths:
         cfg = yaml.safe_load(path.read_text(encoding="utf-8"))
         env = orchestration_env(cfg.get("orchestration"))
-        assert env["GR_ORCHESTRATOR"] == "legacy", path
+        assert env["GR_ORCHESTRATOR"] == cfg["orchestration"]["policy"], path
         assert env["GR_CONTEXT_BUDGET_TOKENS"] == "50000", path
-        assert "GR_FEAT_TAU" not in env, f"{path}: feature_tau should stay null"
+        if "feature_tau" in cfg["orchestration"]:
+            assert "GR_FEAT_TAU" not in env, f"{path}: feature_tau should stay null"
 
 
 def test_prepare_import_exports_yaml_defaults_and_lets_explicit_env_win(
