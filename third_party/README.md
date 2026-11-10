@@ -28,13 +28,13 @@ checkout. The checkout itself remains ignored; this tracked record is the
 reproducibility pin.
 
 - Remote: `https://github.com/WilliamOdinson/gpt-researcher.git`
-- Branch: `srikar/sol-pilot`
+- Branch: `aadya/drb-azure-flex`
 - Commit: `f1abd1caeefc6c55146b39afbc2dda44eedd40d8`
 
 Clone it directly without invoking the all-repository bootstrap script:
 
 ```bash
-git clone --branch srikar/sol-pilot \
+git clone --branch aadya/drb-azure-flex \
   https://github.com/WilliamOdinson/gpt-researcher.git \
   third_party/gpt-researcher
 git -C third_party/gpt-researcher checkout \
