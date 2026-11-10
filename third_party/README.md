@@ -29,7 +29,7 @@ reproducibility pin.
 
 - Remote: `https://github.com/WilliamOdinson/gpt-researcher.git`
 - Branch: `srikar/sol-pilot`
-- Commit: `a0898c838d738c0b2cf24f607c989dd4d90137e9`
+- Commit: `f1abd1caeefc6c55146b39afbc2dda44eedd40d8`
 
 Clone it directly without invoking the all-repository bootstrap script:
 
@@ -38,7 +38,7 @@ git clone --branch srikar/sol-pilot \
   https://github.com/WilliamOdinson/gpt-researcher.git \
   third_party/gpt-researcher
 git -C third_party/gpt-researcher checkout \
-  a0898c838d738c0b2cf24f607c989dd4d90137e9
+  f1abd1caeefc6c55146b39afbc2dda44eedd40d8
 ```
 
 The harness writes reports in each repo's official format, invokes their scripts as subprocesses, and parses their result files back into scores.
