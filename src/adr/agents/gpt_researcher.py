@@ -86,6 +86,8 @@ _log = logging.getLogger(__name__)
 _ORCH_ENV_MAP = {
     "policy": "GR_ORCHESTRATOR",
     "context_budget_tokens": "GR_CONTEXT_BUDGET_TOKENS",
+    "stop_total_tokens": "GR_STOP_TOTAL_TOKENS",
+    "report_reserve_tokens": "GR_REPORT_RESERVE_TOKENS",
     "final_context.mode": "GR_FINAL_CONTEXT",
     "final_context.learnings_share": "GR_FINAL_LEARNINGS_SHARE",
     "final_context.item_max_words": "GR_FINAL_ITEM_MAX_WORDS",
@@ -263,6 +265,38 @@ class GPTResearcherAgent:
         lat = importlib.import_module("gpt_researcher.utils.latency_tracker").LatencyTracker
         return gr.GPTResearcher, tok, lat
 
+    @staticmethod
+    def _call_log() -> Any:
+        """The fork's per-call LLM log, or None on a fork without it."""
+        try:
+            return importlib.import_module("gpt_researcher.utils.llm_call_log").LLMCallLog
+        except ImportError:
+            return None
+
+    @staticmethod
+    def _token_stop_stats(deep: Any, TokenTracker: Any, gtraj: Any) -> dict[str, Any]:
+        """The fork's token stopping-rule record plus how the run actually ended.
+
+        GR_STOP_TOTAL_TOKENS is a stopping rule, not a hard cap, so the final
+        total is compared with the target here: ``ended_above_target`` and
+        ``overshoot_tokens`` say whether and by how much it was exceeded."""
+        info = dict(getattr(deep, "token_stop_info", None) or {})
+        totals = TokenTracker.get_totals()
+        final_tokens = int(totals.get("input_tokens", 0)) + int(totals.get("output_tokens", 0))
+        synth = getattr(gtraj, "synthesis_cost", None)
+        report_tokens = (
+            int(getattr(synth, "tokens_input", 0) or 0) + int(getattr(synth, "tokens_output", 0) or 0)
+            if synth is not None else None
+        )
+        target = info.get("stop_total_tokens")
+        info.update(
+            final_tokens=final_tokens,
+            report_tokens=report_tokens,
+            ended_above_target=bool(target) and final_tokens > int(target),
+            overshoot_tokens=max(0, final_tokens - int(target)) if target else None,
+        )
+        return info
+
     # ── run ───────────────────────────────────────────────────────
     async def run(self, task: ResearchTask, ctx: AgentContext) -> Trajectory:
         GPTResearcher, TokenTracker, LatencyTracker = self._modules()
@@ -271,6 +305,9 @@ class GPTResearcherAgent:
         # under a semaphore, so reset here and read back before returning.
         TokenTracker.reset()
         LatencyTracker.reset()
+        CallLog = self._call_log()
+        if CallLog is not None:
+            CallLog.reset()
 
         # Query.text stays the raw question (judge [question] + ground_truth).
         # Official openai_client wraps QUERY_TEMPLATE_NO_GET_DOCUMENT as the
@@ -295,6 +332,20 @@ class GPTResearcherAgent:
         traj = state.trajectory()
         traj.final_stats.update(self._extra_stats(gtraj, wall))
         traj.final_stats["orchestration"] = dict(self._orchestration_effective)
+        # Token stopping rule (GR_STOP_TOTAL_TOKENS): whether it stopped research,
+        # and whether the run still ended above the target.
+        traj.final_stats["token_stop"] = self._token_stop_stats(deep, TokenTracker, gtraj)
+        # One record per LLM call (start, end, tokens, tier, attempts, Flex
+        # capacity waits); wall_s_excl_capacity_wait takes Flex queueing out
+        # of latency (calls run one at a time at concurrency 1).
+        if CallLog is not None:
+            calls = CallLog.get_records()
+            call_summary = CallLog.summary()
+            call_summary["wall_s_excl_capacity_wait"] = round(
+                max(0.0, wall - float(call_summary.get("capacity_wait_s", 0.0))), 4
+            )
+            traj.final_stats["llm_calls"] = calls
+            traj.final_stats["llm_call_summary"] = call_summary
         traj.final_stats["retrieved_docids"] = self._retrieved_docids(researcher, gtraj)
         # Which models actually ran and what each usage tag (e.g. the prompted
         # policy's "orchestrator" calls) cost, from the fork's TokenTracker.

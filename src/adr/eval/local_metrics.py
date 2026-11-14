@@ -37,14 +37,25 @@ _ORACLE_MEAN_KEYS = [
     "retrieved_recall_gold",
 ]
 
+# Present only on gpt-researcher runs whose fork logs LLM calls / applies the
+# token stopping rule; averaged over the queries that have them. The two
+# booleans average to rates (share of queries stopped / ended above target).
+_OPTIONAL_MEAN_KEYS = [
+    "capacity_wait_s",
+    "wall_s_excl_capacity_wait",
+    "token_stop_stopped",
+    "token_stop_ended_above_target",
+    "token_stop_overshoot_tokens",
+]
+
 
 def compute_local_metrics(trajectories: list[Trajectory]) -> dict[str, Any]:
     """Cost / structure metrics that do not need a judge model."""
     rows = [_one(traj) for traj in trajectories]
     n = len(rows) or 1
     averages = {f"mean_{k}": round(sum(row[k] for row in rows) / n, 4) for k in _MEAN_KEYS}
-    for key in _ORACLE_MEAN_KEYS:
-        vals = [row[key] for row in rows if isinstance(row.get(key), (int, float))]
+    for key in _ORACLE_MEAN_KEYS + _OPTIONAL_MEAN_KEYS:
+        vals = [float(row[key]) for row in rows if isinstance(row.get(key), (int, float))]
         if vals:
             averages[f"mean_{key}"] = round(sum(vals) / len(vals), 4)
     return {
@@ -102,7 +113,26 @@ def _one(traj: Trajectory) -> dict[str, Any]:
         "article_chars": len(article),
         "budget_violations": stats.get("budget_violations") or [],
         **_oracle_row(traj),
+        **_flex_and_token_stop_row(stats),
     }
+
+
+def _flex_and_token_stop_row(stats: dict[str, Any]) -> dict[str, Any]:
+    """Flex capacity waiting (from the per-call LLM log) and the token
+    stopping rule's outcome, when the run recorded them."""
+    out: dict[str, Any] = {}
+    calls = stats.get("llm_call_summary")
+    if isinstance(calls, dict):
+        for key in ("capacity_wait_s", "wall_s_excl_capacity_wait"):
+            if isinstance(calls.get(key), (int, float)):
+                out[key] = float(calls[key])
+    stop = stats.get("token_stop")
+    if isinstance(stop, dict) and stop.get("stop_total_tokens"):
+        out["token_stop_stopped"] = bool(stop.get("stopped"))
+        out["token_stop_ended_above_target"] = bool(stop.get("ended_above_target"))
+        if isinstance(stop.get("overshoot_tokens"), (int, float)):
+            out["token_stop_overshoot_tokens"] = int(stop["overshoot_tokens"])
+    return out
 
 
 def _oracle_row(traj: Trajectory) -> dict[str, Any]:

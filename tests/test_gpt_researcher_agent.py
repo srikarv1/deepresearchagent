@@ -553,3 +553,163 @@ def test_prepare_import_exports_yaml_defaults_and_lets_explicit_env_win(
     assert agent._orchestration_effective["GR_ORCHESTRATOR"] == "heuristic_stop"
     assert agent._orchestration_effective["GR_GREEDY_LAMBDA"] == "0.25"
     assert "GR_FEAT_TAU" not in agent._orchestration_effective
+
+
+# ── token stopping rule + per-call LLM log ───────────────────────────
+
+
+def test_orchestration_env_maps_the_token_stopping_rule():
+    from adr.agents.gpt_researcher import orchestration_env
+
+    assert orchestration_env({"stop_total_tokens": 150000, "report_reserve_tokens": "auto"}) == {
+        "GR_STOP_TOTAL_TOKENS": "150000",
+        "GR_REPORT_RESERVE_TOKENS": "auto",
+    }
+    assert orchestration_env({"report_reserve_tokens": 45000}) == {"GR_REPORT_RESERVE_TOKENS": "45000"}
+    # null leaves the fork default (no stopping rule) in place.
+    assert orchestration_env({"stop_total_tokens": None, "report_reserve_tokens": None}) == {}
+
+
+def test_stopping_rule_is_only_on_in_the_budget150_configs():
+    """The uncapped configs feed the pilot scripts, sweep_policies.sh and the
+    rollout configs; the 150k stopping rule must live only in *_budget150."""
+    import yaml
+
+    from adr.agents.gpt_researcher import orchestration_env
+    from adr.runner.config import load_config
+
+    root = Path(__file__).resolve().parents[1] / "configs"
+    for path in sorted((root / "agents").glob("gpt_researcher*.yaml")):
+        env = orchestration_env((yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get("orchestration"))
+        if path.stem.endswith("_budget150"):
+            assert env.get("GR_STOP_TOTAL_TOKENS") == "150000", path.name
+            assert env.get("GR_REPORT_RESERVE_TOKENS") == "auto", path.name
+        else:
+            assert "GR_STOP_TOTAL_TOKENS" not in env, path.name
+
+    for run_cfg, agent_cfg in (
+        ("gym_sol_pilot_d2_budget150.yaml", "configs/agents/gpt_researcher_gym_gptsol_d2_budget150.yaml"),
+        ("gpt_researcher_bench_budget150.yaml", "configs/agents/gpt_researcher_bench_budget150.yaml"),
+    ):
+        cfg = load_config(root / run_cfg)
+        assert cfg["agent"]["config"] == agent_cfg
+        assert cfg["budget"]["max_tokens"] == 150000
+        assert cfg["run_name"].endswith("-budget150")
+
+
+def _stop_stats(info, totals, synth):
+    from adr.agents.gpt_researcher import GPTResearcherAgent
+
+    deep = types.SimpleNamespace(token_stop_info=info)
+    tracker = types.SimpleNamespace(get_totals=lambda: totals)
+    gtraj = types.SimpleNamespace(synthesis_cost=synth)
+    return GPTResearcherAgent._token_stop_stats(deep, tracker, gtraj)
+
+
+def test_token_stop_stats_flag_a_run_that_ended_above_the_target():
+    synth = types.SimpleNamespace(tokens_input=30000, tokens_output=6000)
+    info = {"stop_total_tokens": 150000, "stopped": True, "tokens_at_stop": 110000}
+
+    over = _stop_stats(info, {"input_tokens": 140000, "output_tokens": 15000}, synth)
+    assert over["final_tokens"] == 155000
+    assert over["report_tokens"] == 36000
+    assert over["ended_above_target"] is True
+    assert over["overshoot_tokens"] == 5000
+    assert over["tokens_at_stop"] == 110000  # the fork's record is kept
+
+    under = _stop_stats(info, {"input_tokens": 130000, "output_tokens": 15000}, synth)
+    assert under["ended_above_target"] is False and under["overshoot_tokens"] == 0
+
+
+def test_token_stop_stats_without_a_target():
+    stats = _stop_stats({}, {"input_tokens": 300000, "output_tokens": 20000}, None)
+    assert stats["final_tokens"] == 320000
+    assert stats["ended_above_target"] is False
+    assert stats["overshoot_tokens"] is None
+    assert stats["report_tokens"] is None
+
+
+class _CallLog:
+    records: list = []
+    resets = 0
+
+    @staticmethod
+    def reset():
+        # Counts only, so the test can preload the records the run returns.
+        _CallLog.resets += 1
+
+    @staticmethod
+    def get_records():
+        return [dict(r) for r in _CallLog.records]
+
+    @staticmethod
+    def summary():
+        return {"n_calls": len(_CallLog.records), "capacity_wait_s": 2.5}
+
+
+@pytest.mark.asyncio
+async def test_adapter_records_token_stop_and_llm_call_log(
+    fake_gpt_researcher: Path, gym_query, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from adr.agents.gpt_researcher import GPTResearcherAgent
+
+    calllog = types.ModuleType("gpt_researcher.utils.llm_call_log")
+    calllog.LLMCallLog = _CallLog
+    monkeypatch.setitem(sys.modules, "gpt_researcher.utils.llm_call_log", calllog)
+    _CallLog.records = [{"model": "m", "attempts": 1, "capacity_wait_s": 2.5}]
+    _CallLog.resets = 0
+    # The fake run is charged 7880 tokens (rounds 1100 + 880, report 5900).
+    monkeypatch.setattr(
+        _Deep, "token_stop_info", {"stop_total_tokens": 7000, "stopped": True}, raising=False
+    )
+
+    agent = GPTResearcherAgent({"trajectory_dir": str(fake_gpt_researcher)})
+    ctx = AgentContext(llm=None, search=None, extra={"meter": CostMeter(), "run_dir": str(tmp_path)})
+    traj = await agent.run(ResearchTask(query=gym_query, budget=Budget()), ctx)
+
+    stop = traj.final_stats["token_stop"]
+    assert stop["stopped"] is True
+    assert stop["final_tokens"] == 7880
+    assert stop["report_tokens"] == 5900
+    assert stop["ended_above_target"] is True and stop["overshoot_tokens"] == 880
+
+    assert _CallLog.resets == 1  # reset at the start of the query
+    assert traj.final_stats["llm_calls"] == [{"model": "m", "attempts": 1, "capacity_wait_s": 2.5}]
+    summary = traj.final_stats["llm_call_summary"]
+    assert summary["n_calls"] == 1
+    assert summary["wall_s_excl_capacity_wait"] == 0.0  # fake run is instant; wait clamps at 0
+
+
+@pytest.mark.asyncio
+async def test_adapter_without_call_log_module(fake_gpt_researcher: Path, gym_query, tmp_path: Path):
+    """A fork without llm_call_log (older branches) still runs; no call log is recorded."""
+    from adr.agents.gpt_researcher import GPTResearcherAgent
+
+    agent = GPTResearcherAgent({"trajectory_dir": str(fake_gpt_researcher)})
+    ctx = AgentContext(llm=None, search=None, extra={"meter": CostMeter(), "run_dir": str(tmp_path)})
+    traj = await agent.run(ResearchTask(query=gym_query, budget=Budget()), ctx)
+    assert "llm_calls" not in traj.final_stats
+    assert traj.final_stats["token_stop"]["final_tokens"] == 7880
+
+
+def test_local_metrics_average_flex_wait_and_token_stop_outcomes():
+    from adr.core.types import Query, Trajectory
+    from adr.eval.local_metrics import compute_local_metrics
+
+    def traj(qid, wait, wall_excl, stopped, above, over):
+        t = Trajectory(query=Query(id=qid, text="q", dataset="deep_research_gym", language="en"))
+        t.final_stats = {
+            "llm_call_summary": {"capacity_wait_s": wait, "wall_s_excl_capacity_wait": wall_excl},
+            "token_stop": {"stop_total_tokens": 150000, "stopped": stopped,
+                           "ended_above_target": above, "overshoot_tokens": over},
+        }
+        return t
+
+    plain = Trajectory(query=Query(id="c", text="q", dataset="deep_research_gym", language="en"))
+    m = compute_local_metrics([traj("a", 10.0, 500.0, True, True, 4000), traj("b", 0.0, 700.0, True, False, 0), plain])
+    assert m["mean_capacity_wait_s"] == 5.0
+    assert m["mean_wall_s_excl_capacity_wait"] == 600.0
+    assert m["mean_token_stop_stopped"] == 1.0
+    assert m["mean_token_stop_ended_above_target"] == 0.5
+    assert m["mean_token_stop_overshoot_tokens"] == 2000.0
+    assert "token_stop_stopped" not in m["per_query"][2]  # runs without the rule add nothing
