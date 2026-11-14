@@ -1,0 +1,44 @@
+# 150k-token budget variant of gpt_researcher_bench.yaml with its own run
+# name (runs/gpt-researcher-bench-budget150-*), so sweep_policies.sh and the
+# uncapped DRB tables are untouched:
+#
+#   adr run -c configs/gpt_researcher_bench_budget150.yaml
+#
+run_name: gpt-researcher-bench-budget150
+output_dir: runs
+seed: 17
+concurrency: 1
+
+dataset:
+  name: deep_research_bench
+  language: en
+  limit: 50
+  query_ids: []
+
+# Agent parameters (depth/breadth, models, `orchestration:`) are in the agent
+# YAML; GR_ORCHESTRATOR=<policy> selects the orchestration row for one command,
+# scripts/sweep_policies.sh --bench drb runs every row.
+agent:
+  name: gpt_researcher
+  config: configs/agents/gpt_researcher_bench_budget150.yaml
+
+llm:
+  provider: mock
+  model: unused
+search:
+  backend: mock
+  top_k: 5
+
+budget:
+  max_steps: 32
+  max_searches: 64
+  max_reads: 128
+  # Recorded only; the stopping rule in the agent config enforces it.
+  max_tokens: 150000
+  max_latency_s: 1200.0
+  max_evidence: 512
+  enforce: false
+
+eval:
+  official_benches: []
+  # official_benches: [deep_research_bench]
