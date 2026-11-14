@@ -1,8 +1,9 @@
-# 150k-token budget variant of gpt_researcher_bench.yaml with its own run
-# name (runs/gpt-researcher-bench-budget150-*), so sweep_policies.sh and the
-# uncapped DRB tables are untouched:
+# 150k-token budget experiment on DeepResearch Bench (GPT-6.1 Sol on Azure
+# Flex, depth 2 / breadth 4, Tavily), with its own run name so
+# sweep_policies.sh and the uncapped DRB tables are untouched. One arm at a
+# time, see docs/token_budget_experiment.md:
 #
-#   adr run -c configs/gpt_researcher_bench_budget150.yaml
+#   bash scripts/sol_budget.sh drb <none|prompted|extractive|bc|dpo> [query ids]
 #
 run_name: gpt-researcher-bench-budget150
 output_dir: runs
@@ -12,7 +13,8 @@ concurrency: 1
 dataset:
   name: deep_research_bench
   language: en
-  limit: 50
+  # Queries come from scripts/sol_budget.sh drb (61-75 by default).
+  limit: null
   query_ids: []
 
 # Agent parameters (depth/breadth, models, `orchestration:`) are in the agent
