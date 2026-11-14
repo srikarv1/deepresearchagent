@@ -1,6 +1,10 @@
-# 150k-token budget variant of gpt_researcher_bench.yaml: identical except
+# 150k-token budget experiment on DeepResearch Bench: the same agent as the
+# DeepResearchGym budget config (configs/agents/gpt_researcher_gym_gptsol_d2_budget150.yaml),
+# GPT-6.1 Sol (always on Azure Flex) at depth 2 / breadth 4, with Tavily
+# retrieval instead of the DeepResearchGym corpus. Differs from
+# gpt_researcher_bench.yaml (gpt-5-mini, depth 3) in the models, the depth and
 # orchestration.stop_total_tokens / report_reserve_tokens below.
-# Used by configs/gpt_researcher_bench_budget150.yaml.
+# Used by configs/gpt_researcher_bench_budget150.yaml via scripts/sol_budget.sh drb.
 
 # gpt-researcher deep research mode via the instrumented fork, DeepResearch
 # Bench agent config (used by configs/gpt_researcher_bench.yaml and
@@ -19,7 +23,7 @@ repo_path: null
 # depth: levels of the research tree; breadth: sub-queries at the root node
 # (child nodes get max(2, breadth // 2)); concurrency: sub-researchers run in
 # parallel per node.
-depth: 3
+depth: 2
 breadth: 4
 concurrency: 1
 
@@ -139,7 +143,7 @@ orchestration:
 # Extra env vars set before import (applied after `orchestration:` and over
 # the shell).
 env:
-  STRATEGIC_LLM: "openai:gpt-5-mini"
-  SMART_LLM: "openai:gpt-5-mini"
-  FAST_LLM: "openai:gpt-5-mini"
-  EMBEDDING: "openai:text-embedding-3-small"
+  STRATEGIC_LLM: "openai:gpt-6.1-sol-1gtjfzlv8i"
+  SMART_LLM: "openai:gpt-6.1-sol-1gtjfzlv8i"
+  FAST_LLM: "openai:gpt-6.1-sol-1gtjfzlv8i"
+  EMBEDDING: "openai:text-embedding-3-small-v1-651fgh"
