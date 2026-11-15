@@ -148,14 +148,15 @@ def fmt(col: str, v: float) -> str:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("bench", choices=sorted(BENCHES))
-    ap.add_argument("--root", type=Path, help="run root (default: the bench's budget-150K root)")
+    ap.add_argument("--budget", type=int, default=150000, help="token budget of the runs (default 150000); picks the run root")
+    ap.add_argument("--root", type=Path, help="run root (default: the bench's root for --budget)")
     ap.add_argument("--arms", nargs="*", help="arm directories under the root (default: all, in table order)")
     ap.add_argument("--baseline", default="none", help="arm the others are paired against (default: none)")
     ap.add_argument("--drop-starved", action="store_true", help="leave out runs flagged as starved of evidence")
     args = ap.parse_args()
 
     spec = BENCHES[args.bench]
-    root = args.root or Path(spec["root"])
+    root = args.root or Path(spec["root"].replace("budget150", f"budget{args.budget // 1000}"))
     arms = args.arms or [a for a in ARM_ORDER if (root / a).is_dir()] + sorted(
         p.name for p in root.iterdir() if p.is_dir() and p.name not in ARM_ORDER and any(p.glob("*-s*")))
     if not arms:

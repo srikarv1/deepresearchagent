@@ -166,3 +166,23 @@ def test_queue_adjust_and_table_end_to_end(tmp_path, capsys, monkeypatch):
     assert cells[10] == "400.0"                 # Latency with the Flex wait removed
     assert cells[-3:] == ["2/2", "2/2", "2/2"]  # stopped, ended over, report context trimmed
     assert "| Overall | +3.00 |" in out
+
+
+def test_budget_env_picks_the_run_root_and_overrides_the_config():
+    run = (REPO / "scripts" / "sol_budget.sh").read_text()
+    assert 'budget=${BUDGET:-150000}' in run
+    assert 'root=${root%budget150}budget$((budget / 1000))' in run
+    assert '--env "GR_STOP_TOTAL_TOKENS=$budget"' in run
+    judge = (REPO / "scripts" / "sol_budget_judge.sh").read_text()
+    assert 'root=${root%budget150}budget$(( ${BUDGET:-150000} / 1000 ))' in judge
+
+
+def test_table_reads_the_root_of_the_requested_budget(tmp_path, monkeypatch, capsys):
+    t = _script("budget_table")
+    monkeypatch.chdir(tmp_path)
+    _write_run(tmp_path / "runs" / "gym_sol_budget100" / "none", "1", tokens=99000, wall=300.0, quality=60.0,
+               budget={"stop_total_tokens": 100000, "stopped": True, "ended_above_target": False}, calls=[])
+    monkeypatch.setattr(sys, "argv", ["budget_table.py", "drg", "--budget", "100000"])
+    t.main()
+    out = capsys.readouterr().out
+    assert "| No pruning | 1 |" in out and "| 99.0 |" in out

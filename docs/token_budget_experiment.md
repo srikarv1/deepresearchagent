@@ -200,11 +200,20 @@ tar -czf drg_budget150_<arm>.tgz runs/gym_sol_budget150/<arm>
 To add someone else's arm to your table, unpack it so it lands at
 `runs/gym_sol_budget150/<arm>/`, then rerun steps 2 to 4.
 
-## Changing the budget
+## Other budgets
 
-The budget is `orchestration.stop_total_tokens` (and the reserve
-`orchestration.report_reserve_tokens`) in
-`configs/agents/gpt_researcher_gym_gptsol_d2_budget150.yaml` (drg) and
-`configs/agents/gpt_researcher_bench_budget150.yaml` (drb). The two differ only
-in the retriever. Keep one run root per budget: results from different budgets
-must not share a directory.
+Set `BUDGET` (tokens per query, default 150000) on every command. Each budget
+gets its own run root (`runs/gym_sol_budget100`, `runs/drb_sol_budget100`, ...),
+so budgets never mix.
+
+```bash
+BUDGET=100000 bash scripts/sol_budget.sh drg none
+BUDGET=100000 bash scripts/sol_budget_judge.sh drg
+python scripts/flex_queue_adjust.py runs/gym_sol_budget100
+python scripts/budget_table.py drg --budget 100000
+```
+
+`BUDGET` overrides `orchestration.stop_total_tokens` of the two agent configs
+(`configs/agents/gpt_researcher_gym_gptsol_d2_budget150.yaml` for drg,
+`configs/agents/gpt_researcher_bench_budget150.yaml` for drb), which differ only
+in the retriever.
