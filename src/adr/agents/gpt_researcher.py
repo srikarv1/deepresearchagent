@@ -88,6 +88,7 @@ _ORCH_ENV_MAP = {
     "context_budget_tokens": "GR_CONTEXT_BUDGET_TOKENS",
     "stop_total_tokens": "GR_STOP_TOTAL_TOKENS",
     "report_reserve_tokens": "GR_REPORT_RESERVE_TOKENS",
+    "stop_hard_cap": "GR_STOP_HARD_CAP",
     "final_context.mode": "GR_FINAL_CONTEXT",
     "final_context.learnings_share": "GR_FINAL_LEARNINGS_SHARE",
     "final_context.item_max_words": "GR_FINAL_ITEM_MAX_WORDS",

@@ -32,6 +32,7 @@ def test_drg_and_drb_run_the_same_agent_under_150k(run_config):
     env = orchestration_env(agent["orchestration"])
     assert env["GR_STOP_TOTAL_TOKENS"] == "150000"
     assert env["GR_REPORT_RESERVE_TOKENS"] == "auto"  # estimated from the evidence
+    assert env["GR_STOP_HARD_CAP"] == "true"  # no run may end above 150k
     assert agent["depth"] == 2 and agent["breadth"] == 4 and agent["concurrency"] == 1
     # The arm is chosen by the driver; the config must not pin a policy via env.
     assert "GR_ORCHESTRATOR" not in (agent.get("env") or {})
@@ -129,7 +130,8 @@ def test_queue_adjust_and_table_end_to_end(tmp_path, capsys, monkeypatch):
     root = tmp_path / "budget"
     on_time = 2.23998987110841 - 4.4760121998408825e-06 * 1000 + 0.01822918253254161 * 100
     under = {"stop_total_tokens": 150000, "stopped": True, "ended_above_target": False}
-    over = {"stop_total_tokens": 150000, "stopped": True, "ended_above_target": True}
+    over = {"stop_total_tokens": 150000, "stopped": True, "ended_above_target": True,
+            "report_context_trimmed": True}
     for qid, quality in (("1", 60.0), ("2", 62.0)):
         # none: an older run with the jsonl call log, still read.
         _write_run(root / "none", qid, tokens=149000, wall=400.0, quality=quality, budget=under,
@@ -162,5 +164,5 @@ def test_queue_adjust_and_table_end_to_end(tmp_path, capsys, monkeypatch):
     assert cells[7] == "64.0"                   # Overall
     assert cells[9] == "152.0"                  # Tokens (K)
     assert cells[10] == "400.0"                 # Latency with the Flex wait removed
-    assert cells[-2:] == ["2/2", "2/2"]         # stopped by the budget, ended over it
+    assert cells[-3:] == ["2/2", "2/2", "2/2"]  # stopped, ended over, report context trimmed
     assert "| Overall | +3.00 |" in out

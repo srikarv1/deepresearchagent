@@ -14,8 +14,8 @@
 # trajectory carries the per-call LLM log (final_stats.llm_calls) that
 # scripts/flex_queue_adjust.py uses to take Azure Flex queueing out of latency.
 #
-# Needs the gpt-researcher fork on branch aadya/drb-azure-flex (Sol on Flex and
-# the GR_STOP_TOTAL_TOKENS stopping rule, fork PR #12).
+# Needs the gpt-researcher fork on branch aadya/drb-azure-flex (Sol on Flex, the
+# GR_STOP_TOTAL_TOKENS stopping rule and its hard cap, fork PRs #12 and #14).
 #
 # Credentials, from the environment or .env:
 #   Sol:      SOL_API_KEY + SOL_BASE_URL, else AZURE_OPENAI_API_KEY (202610-deepres),
@@ -59,9 +59,9 @@ fi
 unset GR_AZURE_SERVICE_TIER LLM_KWARGS
 
 fork=third_party/gpt-researcher
-grep -q GR_STOP_TOTAL_TOKENS "$fork/gpt_researcher/skills/deep_research.py" 2>/dev/null \
+grep -q GR_STOP_HARD_CAP "$fork/gpt_researcher/skills/deep_research.py" 2>/dev/null \
   && [ -f "$fork/gpt_researcher/utils/llm_call_log.py" ] || {
-  echo "$fork has no GR_STOP_TOTAL_TOKENS stopping rule: git -C $fork switch aadya/drb-azure-flex && git -C $fork pull" >&2; exit 1; }
+  echo "$fork has no GR_STOP_HARD_CAP token cap: git -C $fork switch aadya/drb-azure-flex && git -C $fork pull" >&2; exit 1; }
 
 extra=()
 case $arm in

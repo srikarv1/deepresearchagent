@@ -62,6 +62,10 @@ orchestration:
   # evidence (smaller reports) can research longer: an equal TOTAL budget. An
   # integer reserves a fixed amount: an equal RESEARCH budget instead.
   report_reserve_tokens: auto
+  # GR_STOP_HARD_CAP: after research stops, trim the writer context and cap
+  # the report's max_tokens so the query's total cannot end above
+  # stop_total_tokens (fork PR #14). false = stopping rule only.
+  stop_hard_cap: true
   final_context:
     # GR_FINAL_CONTEXT: how the writer context is built from the learnings and
     # the retained set. ranked = reserve a share of the 25k-word cap for the

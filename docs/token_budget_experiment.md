@@ -23,19 +23,31 @@ sub-query, the run checks:
 If so, research stops and the report is written from the evidence gathered.
 Every run still produces a report.
 
+Then a **hard cap** (`stop_hard_cap: true`, `GR_STOP_HARD_CAP`) makes the
+report fit in what is left: if the writer context's prompt would not fit, the
+context is trimmed (the method's own ranking decides what goes), and the
+report's `max_tokens` is set to the remainder. So research + report prompt +
+report output is at most 150,000 for every run of every method. Prompt tokens
+are counted with Sol's tokenizer (`o200k_base`), which matched Azure's billed
+prompt tokens to within 448 on 248 pilot reports.
+
 - The expected report cost (`report_reserve_tokens: auto`) is estimated from
   the evidence that would go to the writer. A method that prunes more leaves a
   smaller report prompt, so it can spend more of the 150K on research: an
   equal *total* budget. No arm gets a different rule. (An integer instead of
   `auto` reserves a fixed amount: an equal *research* budget.)
-- It is a stopping rule, not a hard cutoff. A run can end a few thousand tokens
-  over. The table reports how many runs were stopped and how many ended over.
+- The only way a run can end over 150K is if research alone leaves under 8K
+  for the report (`hard_cap_feasible: false`); the stopping rule's reserve
+  makes that very unlikely. The table's Over column shows it if it happens, and
+  Trimmed counts runs whose report context was cut to fit.
 - BC and DPO are the trained adapters as they are. Nothing is retrained or
   tuned for the budget.
 
 Each trajectory records what happened in `final_stats.token_stop`
 (`stopped`, `stopped_at`, `tokens_at_stop`, `report_reserve_at_stop`,
-`final_tokens`, `report_tokens`, `ended_above_target`, `overshoot_tokens`).
+`final_tokens`, `report_tokens`, `ended_above_target`, `overshoot_tokens`,
+and from the hard cap `report_context_trimmed`, `report_context_tokens`,
+`report_max_output_tokens`, `hard_cap_feasible`).
 
 ## Setup
 
@@ -167,7 +179,8 @@ It prints one row per arm and, for every arm, the per-query paired difference
 against No pruning with a bootstrap 95% interval. Extra columns:
 
 - **Stopped**: runs the stopping rule stopped, out of runs with the rule on.
-- **Over**: runs that ended above 150K (`ended_above_target`).
+- **Over**: runs that ended above 150K (`ended_above_target`); should be 0.
+- **Trimmed**: runs whose report context the hard cap cut to fit.
 
 It warns about reports without all judge scores (left out) and about runs
 starved of evidence: the first round, or at least half the rounds, found
