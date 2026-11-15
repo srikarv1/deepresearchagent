@@ -8,14 +8,19 @@
 #   bash scripts/sol_budget.sh drg none                  # the 50 DeepResearchGym pilot queries
 #   bash scripts/sol_budget.sh drb bc                    # DeepResearch Bench queries 61-75
 #   bash scripts/sol_budget.sh drg dpo 546111,442352     # only these queries
+#   BUDGET=100000 bash scripts/sol_budget.sh drg none    # another budget, own run root
+#
+# BUDGET (default 150000) is the token budget per query. It overrides
+# stop_total_tokens of the config and picks the run root, so budgets never mix:
+# runs/<gym|drb>_sol_budget<BUDGET/1000>/<arm>.
 #
 # Resumable: a finished query is skipped, so rerun the same command after any
 # interruption. Reports go to runs/<gym|drb>_sol_budget150/<arm>/<query>-s0; each
 # trajectory carries the per-call LLM log (final_stats.llm_calls) that
 # scripts/flex_queue_adjust.py uses to take Azure Flex queueing out of latency.
 #
-# Needs the gpt-researcher fork on branch aadya/drb-azure-flex (Sol on Flex and
-# the GR_STOP_TOTAL_TOKENS stopping rule, fork PR #12).
+# Needs the gpt-researcher fork on branch aadya/drb-azure-flex (Sol on Flex, the
+# GR_STOP_TOTAL_TOKENS stopping rule and its hard cap, fork PRs #12 and #14).
 #
 # Credentials, from the environment or .env:
 #   Sol:      SOL_API_KEY + SOL_BASE_URL, else AZURE_OPENAI_API_KEY (202610-deepres),
@@ -40,6 +45,9 @@ case $bench in
   *) echo "bench must be drg or drb, got '$bench'" >&2; exit 1 ;;
 esac
 ids=${ids:-$default_ids}
+budget=${BUDGET:-150000}
+[[ "$budget" =~ ^[0-9]+$ ]] && [ "$budget" -ge 1000 ] || { echo "BUDGET must be a token count, got '$budget'" >&2; exit 1; }
+root=${root%budget150}budget$((budget / 1000))
 
 if [ -f .env ]; then set -a; source .env; set +a; fi
 
@@ -59,11 +67,11 @@ fi
 unset GR_AZURE_SERVICE_TIER LLM_KWARGS
 
 fork=third_party/gpt-researcher
-grep -q GR_STOP_TOTAL_TOKENS "$fork/gpt_researcher/skills/deep_research.py" 2>/dev/null \
+grep -q GR_STOP_HARD_CAP "$fork/gpt_researcher/skills/deep_research.py" 2>/dev/null \
   && [ -f "$fork/gpt_researcher/utils/llm_call_log.py" ] || {
-  echo "$fork has no GR_STOP_TOTAL_TOKENS stopping rule: git -C $fork switch aadya/drb-azure-flex && git -C $fork pull" >&2; exit 1; }
+  echo "$fork has no GR_STOP_HARD_CAP token cap: git -C $fork switch aadya/drb-azure-flex && git -C $fork pull" >&2; exit 1; }
 
-extra=()
+extra=(--env "GR_STOP_TOTAL_TOKENS=$budget")
 case $arm in
   none|prompted|extractive) policy=$arm ;;
   bc|dpo)
@@ -87,7 +95,7 @@ esac
 keep_awake=()
 command -v caffeinate >/dev/null 2>&1 && keep_awake=(caffeinate -i)
 
-echo "token-budget run: bench=$bench arm=$arm policy=$policy -> $root/$arm ($(echo "$ids" | tr ',' '\n' | wc -l | tr -d ' ') queries)"
+echo "token-budget run: bench=$bench arm=$arm policy=$policy budget=$budget -> $root/$arm ($(echo "$ids" | tr ',' '\n' | wc -l | tr -d ' ') queries)"
 exec ${keep_awake[@]+"${keep_awake[@]}"} .venv/bin/adr rollouts -c "$config" \
     --out "$root/$arm" --policy "$policy" \
     --n-seeds 1 --seed-base 0 --query-ids "$ids" ${extra[@]+"${extra[@]}"} "$@"

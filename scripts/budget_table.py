@@ -15,7 +15,9 @@ One row per arm, per-query means over the runs that have every judge score:
         Calls        search calls
         Q per 1K t   headline score / Tokens (K)
         Stopped      runs the stopping rule stopped (final_stats.token_stop.stopped)
-        Over         runs that ended above the target (final_stats.token_stop.ended_above_target)
+        Over         runs that ended above the target (final_stats.token_stop.ended_above_target);
+                     0 with the hard cap (GR_STOP_HARD_CAP) unless research alone used it up
+        Trimmed      runs whose report context the hard cap trimmed to fit
 
 Then, for every other arm, per-query paired differences against ``--baseline``
 over the queries both have, with a bootstrap 95% interval on the mean.
@@ -121,6 +123,7 @@ def load_arm(arm_dir: Path, bench: str, adjusted: dict[str, dict]) -> tuple[dict
         over = stop.get("ended_above_target")
         row["_over"] = 1.0 if (limit and (over if over is not None else tokens > float(limit))) else 0.0
         row["_has_budget"] = 1.0 if limit else 0.0
+        row["_trimmed"] = 1.0 if stop.get("report_context_trimmed") else 0.0
         if starved(traj):
             starved_ids.append(qid)
             row["_starved"] = 1.0
@@ -145,14 +148,15 @@ def fmt(col: str, v: float) -> str:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("bench", choices=sorted(BENCHES))
-    ap.add_argument("--root", type=Path, help="run root (default: the bench's budget-150K root)")
+    ap.add_argument("--budget", type=int, default=150000, help="token budget of the runs (default 150000); picks the run root")
+    ap.add_argument("--root", type=Path, help="run root (default: the bench's root for --budget)")
     ap.add_argument("--arms", nargs="*", help="arm directories under the root (default: all, in table order)")
     ap.add_argument("--baseline", default="none", help="arm the others are paired against (default: none)")
     ap.add_argument("--drop-starved", action="store_true", help="leave out runs flagged as starved of evidence")
     args = ap.parse_args()
 
     spec = BENCHES[args.bench]
-    root = args.root or Path(spec["root"])
+    root = args.root or Path(spec["root"].replace("budget150", f"budget{args.budget // 1000}"))
     arms = args.arms or [a for a in ARM_ORDER if (root / a).is_dir()] + sorted(
         p.name for p in root.iterdir() if p.is_dir() and p.name not in ARM_ORDER and any(p.glob("*-s*")))
     if not arms:
@@ -180,7 +184,7 @@ def main() -> None:
 
     headline = spec["headline"]
     columns = spec["columns"] + COST_COLUMNS
-    header = ("Approach", "n") + columns + ("Q per 1K t", "Stopped", "Over")
+    header = ("Approach", "n") + columns + ("Q per 1K t", "Stopped", "Over", "Trimmed")
     print("\n| " + " | ".join(header) + " |")
     print("|" + "---|" * len(header))
     for arm, rows in data.items():
@@ -191,6 +195,7 @@ def main() -> None:
         n_budget = int(sum(r["_has_budget"] for r in rows.values()))
         cells.append(f"{int(sum(r['_stopped'] for r in rows.values()))}/{n_budget}" if n_budget else "n/a")
         cells.append(f"{int(sum(r['_over'] for r in rows.values()))}/{n_budget}" if n_budget else "n/a")
+        cells.append(f"{int(sum(r['_trimmed'] for r in rows.values()))}/{n_budget}" if n_budget else "n/a")
         print("| " + " | ".join(cells) + " |")
     if args.bench == "drb":
         print("\nQ per 1K t on drb is RACE x 1000 / Tokens (K).")

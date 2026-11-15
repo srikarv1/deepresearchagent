@@ -5,6 +5,7 @@
 #
 #   bash scripts/sol_budget_judge.sh <drg|drb> [arms...]      (default: every arm that has runs)
 #   JOBS=3 bash scripts/sol_budget_judge.sh drg none bc       (3 reports at a time; default 2)
+#   BUDGET=100000 bash scripts/sol_budget_judge.sh drg        (the runs of another budget)
 #
 # drg: quality, key-point recall and citation on gpt-5-mini.
 # drb: RACE and FACT with the judge in configs/eval/deep_research_bench.yaml
@@ -22,6 +23,8 @@ case $bench in
   drb) config=configs/gpt_researcher_bench_budget150.yaml; root=runs/drb_sol_budget150; official=deep_research_bench ;;
   *) echo "bench must be drg or drb, got '$bench'" >&2; exit 1 ;;
 esac
+
+root=${root%budget150}budget$(( ${BUDGET:-150000} / 1000 ))
 
 if [ -f .env ]; then set -a; source .env; set +a; fi
 if [ -n "${JUDGE_API_KEY:-}" ]; then

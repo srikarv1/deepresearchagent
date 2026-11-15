@@ -566,6 +566,8 @@ def test_orchestration_env_maps_the_token_stopping_rule():
         "GR_REPORT_RESERVE_TOKENS": "auto",
     }
     assert orchestration_env({"report_reserve_tokens": 45000}) == {"GR_REPORT_RESERVE_TOKENS": "45000"}
+    assert orchestration_env({"stop_hard_cap": True}) == {"GR_STOP_HARD_CAP": "true"}
+    assert orchestration_env({"stop_hard_cap": False}) == {"GR_STOP_HARD_CAP": "false"}
     # null leaves the fork default (no stopping rule) in place.
     assert orchestration_env({"stop_total_tokens": None, "report_reserve_tokens": None}) == {}
 
