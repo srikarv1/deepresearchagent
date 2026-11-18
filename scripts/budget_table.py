@@ -47,6 +47,8 @@ import random
 import statistics as st
 from pathlib import Path
 
+from adr.eval.latency import union_seconds
+
 BENCHES = {
     "drg": {
         "root": "runs/gym_sol_budget150",
@@ -96,20 +98,10 @@ def drb_scores(official: dict) -> dict[str, float] | None:
 
 
 def model_seconds(calls: list[dict]) -> float:
-    """Length of the union of model-call intervals, minus the time spent being
-    refused for capacity (Flex 429s) at the start of each call."""
-    spans = sorted((float(c["start"]) + float(c.get("capacity_wait_s") or 0.0), float(c["end"]))
-                   for c in calls if c.get("start") is not None and c.get("end") is not None)
-    total, cur_s, cur_e = 0.0, None, None
-    for s, e in spans:
-        if e <= s:
-            continue
-        if cur_e is None or s > cur_e:
-            total += (cur_e - cur_s) if cur_e is not None else 0.0
-            cur_s, cur_e = s, e
-        else:
-            cur_e = max(cur_e, e)
-    return total + ((cur_e - cur_s) if cur_e is not None else 0.0)
+    """Time at least one model call was running (overlaps counted once), minus
+    the time each call spent being refused for capacity (Flex 429s)."""
+    return union_seconds([(float(c["start"]) + float(c.get("capacity_wait_s") or 0.0), float(c["end"]))
+                          for c in calls if c.get("start") is not None and c.get("end") is not None])
 
 
 def starved(traj: dict) -> bool:
