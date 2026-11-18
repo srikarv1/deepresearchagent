@@ -161,9 +161,9 @@ def test_queue_adjust_and_table_end_to_end(tmp_path, capsys, monkeypatch):
     bc_row = next(line for line in out.splitlines() if line.startswith("| PILOT (BC) |"))
     cells = [c.strip() for c in bc_row.strip("|").split("|")]
     assert cells[1] == "2"                      # n, starved run dropped
-    assert cells[7] == "64.0"                   # Overall
-    assert cells[9] == "152.0"                  # Tokens (K)
-    assert cells[10] == "400.0"                 # Latency with the Flex wait removed
+    assert cells[8] == "64.0"                   # Overall
+    assert cells[10] == "152.0"                  # Tokens (K)
+    assert cells[11] == "400.0"                 # Latency with the Flex wait removed
     assert cells[-3:] == ["2/2", "2/2", "2/2"]  # stopped, ended over, report context trimmed
     assert "| Overall | +3.00 |" in out
 

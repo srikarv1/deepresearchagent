@@ -182,6 +182,15 @@ against No pruning with a bootstrap 95% interval. Extra columns:
 - **Over**: runs that ended above 150K (`ended_above_target`); should be 0.
 - **Trimmed**: runs whose report context the hard cap cut to fit.
 
+`--breakdown` needs no judge scores. Per arm it shows where tokens and model
+time went (plan, queries, selection, processing, report), research vs. report
+tokens, $ per query, and the tokens the same stopping rule would end with at
+60K/80K/100K/120K, replayed from the call log (no API calls):
+
+```bash
+python scripts/budget_table.py drg --breakdown
+```
+
 It warns about reports without all judge scores (left out) and about runs
 starved of evidence: the first round, or at least half the rounds, found
 nothing. That happens when the search service is down, and such a run looks
