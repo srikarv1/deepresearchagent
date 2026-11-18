@@ -22,6 +22,9 @@ One row per arm, per-query means over the runs that have every judge score:
 Then, for every other arm, per-query paired differences against ``--baseline``
 over the queries both have, with a bootstrap 95% interval on the mean.
 
+With ``JUDGE_PASS=N bash scripts/sol_budget_judge.sh`` re-judgings present
+(``<root>_pass<N>``), each judge score is the median over passes per report.
+
 Runs whose first round, or at least half of their rounds, found no evidence
 are listed as a warning (a retriever outage makes a run look cheap); ``--drop-starved`` leaves them out.
 """
@@ -145,6 +148,20 @@ def fmt(col: str, v: float) -> str:
     return f"{v:.1f}"
 
 
+def median_over_passes(rows: dict[str, dict], extra: list[dict[str, dict]], columns) -> dict[str, dict]:
+    """Replace each judge score by its median over the first pass and the
+    ``JUDGE_PASS`` re-judgings (scripts/sol_budget_judge.sh) of the same report.
+    Cost columns come from the run itself and are left as they are."""
+    out = {}
+    for qid, row in rows.items():
+        row = dict(row)
+        for col in columns:
+            vals = [row[col]] + [p[qid][col] for p in extra if qid in p and col in p[qid]]
+            row[col] = st.median(vals)
+        out[qid] = row
+    return out
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("bench", choices=sorted(BENCHES))
@@ -177,6 +194,10 @@ def main() -> None:
             print(f"warning: {arm}: {len(starved_ids)} run(s) starved of evidence, {action}: {', '.join(starved_ids)}")
             if args.drop_starved:
                 rows = {q: r for q, r in rows.items() if q not in starved_ids}
+        passes = sorted(root.parent.glob(f"{root.name}_pass*/{arm}"))
+        if passes and rows:
+            rows = median_over_passes(rows, [load_arm(p, args.bench, {})[0] for p in passes], spec["columns"])
+            print(f"note: {arm}: judge scores are the per-report median over {len(passes) + 1} passes")
         if rows:
             data[arm] = rows
     if not data:
