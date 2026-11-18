@@ -26,3 +26,9 @@ def test_replay_stops_before_the_subquery_that_would_not_fit():
 
 def test_replay_always_runs_one_subquery():
     assert bt.replay_tokens(CALLS, 1) == 60
+
+
+def test_model_seconds_counts_overlapping_calls_once_and_drops_capacity_wait():
+    calls = [{"start": 0, "end": 30, "capacity_wait_s": 0}, {"start": 10, "end": 40, "capacity_wait_s": 0},
+             {"start": 100, "end": 160, "capacity_wait_s": 20}]
+    assert bt.model_seconds(calls) == 40 + 40

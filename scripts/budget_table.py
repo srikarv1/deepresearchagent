@@ -13,6 +13,10 @@ One row per arm, per-query means over the runs that have every judge score:
   both  Tokens (K)   total tokens of the run, every model
         Latency (s)  wall time with Azure Flex waiting removed, when
                      <root>/queue_adjusted.json exists (scripts/flex_queue_adjust.py)
+        Model (s)    time at least one model call was running (union of the
+                     call intervals in final_stats.llm_calls, Flex refusals
+                     excluded); unlike wall time it does not depend on the
+                     machine or network the run was generated on
         Calls        search calls
         Q per 1K t   headline score / Tokens (K)
         Stopped      runs the stopping rule stopped (final_stats.token_stop.stopped)
@@ -55,11 +59,11 @@ BENCHES = {
         "columns": ("RACE", "Comp.", "Insight", "Instr.", "Read.", "FACT valid"),
     },
 }
-COST_COLUMNS = ("Tokens (K)", "Latency (s)", "Calls")
+COST_COLUMNS = ("Tokens (K)", "Latency (s)", "Model (s)", "Calls")
 ARM_LABELS = {"none": "No pruning", "prompted": "Prompted orchestration", "extractive": "Extractive compression",
               "bc": "PILOT (BC)", "dpo": "PILOT (DPO)"}
 ARM_ORDER = ("none", "prompted", "extractive", "bc", "dpo")
-LOWER_IS_BETTER = {"Tokens (K)", "Latency (s)", "Calls", "KPC"}
+LOWER_IS_BETTER = {"Tokens (K)", "Latency (s)", "Model (s)", "Calls", "KPC"}
 
 
 def gym_scores(official: dict) -> dict[str, float] | None:
@@ -89,6 +93,23 @@ def drb_scores(official: dict) -> dict[str, float] | None:
     row = {label: float(race[key]) for label, key in keys.items()}
     row["FACT valid"] = float(fact["valid_rate"])
     return row
+
+
+def model_seconds(calls: list[dict]) -> float:
+    """Length of the union of model-call intervals, minus the time spent being
+    refused for capacity (Flex 429s) at the start of each call."""
+    spans = sorted((float(c["start"]) + float(c.get("capacity_wait_s") or 0.0), float(c["end"]))
+                   for c in calls if c.get("start") is not None and c.get("end") is not None)
+    total, cur_s, cur_e = 0.0, None, None
+    for s, e in spans:
+        if e <= s:
+            continue
+        if cur_e is None or s > cur_e:
+            total += (cur_e - cur_s) if cur_e is not None else 0.0
+            cur_s, cur_e = s, e
+        else:
+            cur_e = max(cur_e, e)
+    return total + ((cur_e - cur_s) if cur_e is not None else 0.0)
 
 
 def starved(traj: dict) -> bool:
@@ -127,6 +148,7 @@ def load_arm(arm_dir: Path, bench: str, adjusted: dict[str, dict]) -> tuple[dict
         adj = adjusted.get(run_dir.name)
         row["Latency (s)"] = float(adj["adjusted_wall_s"]) if adj else float(summary["mean_wall_s"])
         row["_raw_latency"] = float(summary["mean_wall_s"])
+        row["Model (s)"] = model_seconds(stats.get("llm_calls") or [])
         row["Calls"] = float(summary["mean_n_searches"])
         row["_stopped"] = 1.0 if stop.get("stopped") else 0.0
         limit = stop.get("stop_total_tokens") or stop.get("total_token_budget")
