@@ -26,6 +26,18 @@ esac
 
 root=${root%budget150}budget$(( ${BUDGET:-150000} / 1000 ))
 
+# JUDGE_PASS=2,3,... judges the same reports again in <root>_pass<N>, a copy of
+# each run without its scores, so earlier scores are never overwritten or
+# reused. scripts/budget_table.py then takes the median per report across passes.
+if [ "${JUDGE_PASS:-1}" -gt 1 ]; then
+  base=$root; root=${root}_pass${JUDGE_PASS}
+  for d in "$base"/*/*-s*/; do
+    [ -f "$d/trajectories/$(basename "$d" | sed 's/-s[0-9]*$//').json" ] || continue
+    dest=$root/${d#"$base"/}
+    [ -d "$dest" ] || { mkdir -p "$dest"; (cd "$d" && tar cf - --exclude=./metrics --exclude=./judge.log .) | (cd "$dest" && tar xf -); }
+  done
+fi
+
 if [ -f .env ]; then set -a; source .env; set +a; fi
 if [ -n "${JUDGE_API_KEY:-}" ]; then
   export OPENAI_API_KEY=$JUDGE_API_KEY

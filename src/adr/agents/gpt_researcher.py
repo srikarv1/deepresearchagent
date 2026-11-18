@@ -52,6 +52,7 @@ from typing import Any
 
 from adr.agents.base import AgentContext, ResearchAgent
 from adr.core.state import ResearchState
+from adr.eval.latency import latency_breakdown, union_seconds
 from adr.core.types import (
     ActionType,
     Evidence,
@@ -267,6 +268,12 @@ class GPTResearcherAgent:
         return gr.GPTResearcher, tok, lat
 
     @staticmethod
+    def _search_intervals(LatencyTracker: Any) -> list[tuple[float, float]]:
+        """``(start, end)`` of each search, on a fork that records them."""
+        per_type = getattr(LatencyTracker, "per_type_latencies", {}) or {}
+        return [tuple(iv) for iv in (per_type.get("search", {}) or {}).get("intervals", []) or []]
+
+    @staticmethod
     def _call_log() -> Any:
         """The fork's per-call LLM log, or None on a fork without it."""
         try:
@@ -347,6 +354,9 @@ class GPTResearcherAgent:
             )
             traj.final_stats["llm_calls"] = calls
             traj.final_stats["llm_call_summary"] = call_summary
+            traj.final_stats["latency_breakdown"] = latency_breakdown(
+                wall, calls, self._search_intervals(LatencyTracker)
+            )
         traj.final_stats["retrieved_docids"] = self._retrieved_docids(researcher, gtraj)
         # Which models actually ran and what each usage tag (e.g. the prompted
         # policy's "orchestrator" calls) cost, from the fork's TokenTracker.
@@ -561,7 +571,13 @@ class GPTResearcherAgent:
         meter.n_calls = int(llm.get("count", 0))
         meter.llm_latency_s = float(llm.get("total_latency", 0.0))
         meter.n_search_calls = int(search.get("count", 0))
-        meter.search_latency_s = float(search.get("total_latency", 0.0))
+        # Searches for parallel sub-queries overlap, so their summed durations
+        # can exceed wall time. Use the union of their intervals when the fork
+        # records them; fall back to the sum on older forks.
+        intervals = search.get("intervals") or []
+        meter.search_latency_s = (
+            union_seconds(intervals) if intervals else float(search.get("total_latency", 0.0))
+        )
         # Scrapes are not in LatencyTracker; visited_urls is the set of pages fetched.
         meter.n_fetch_calls = int(n_fetches)
 

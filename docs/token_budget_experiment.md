@@ -168,6 +168,26 @@ visible any other way; `llm_call_summary.wall_s_excl_capacity_wait` in the
 trajectory removes only (a). Overlapping waits are counted once. It writes
 `<run root>/queue_adjusted.json`.
 
+### Where the rest of the wall time goes
+
+Arms were run on different machines and at different times, and roughly half
+of a run's wall time is not model time at all: web search, page fetching and
+embedding calls, which depend on the network. To compare arms fairly:
+
+```bash
+python scripts/latency_breakdown.py runs/gym_sol_budget150
+python scripts/latency_breakdown.py runs/drb_sol_budget150
+```
+
+Per arm, `model` is the time at least one model call was running (overlapping
+calls counted once), `orch` the same for keep/allocate/stop decisions only,
+`queue` the Flex capacity waiting, `search` the time at least one search was
+running, and `other` the rest. `model` and `orch` do not depend on the machine
+that ran the job. `search` needs runs made with a fork that records search
+intervals; for older runs it shows `-` and search time is part of `other`.
+Runs from this version on also store the same numbers in
+`final_stats.latency_breakdown`.
+
 ## 4. Build the table
 
 ```bash
@@ -181,6 +201,15 @@ against No pruning with a bootstrap 95% interval. Extra columns:
 - **Stopped**: runs the stopping rule stopped, out of runs with the rule on.
 - **Over**: runs that ended above 150K (`ended_above_target`); should be 0.
 - **Trimmed**: runs whose report context the hard cap cut to fit.
+
+`--breakdown` needs no judge scores. Per arm it shows where tokens and model
+time went (plan, queries, selection, processing, report), research vs. report
+tokens, $ per query, and the tokens the same stopping rule would end with at
+60K/80K/100K/120K, replayed from the call log (no API calls):
+
+```bash
+python scripts/budget_table.py drg --breakdown
+```
 
 It warns about reports without all judge scores (left out) and about runs
 starved of evidence: the first round, or at least half the rounds, found
