@@ -183,9 +183,12 @@ python scripts/latency_breakdown.py runs/drb_sol_budget150
 
 Per arm, `model` is the time at least one model call was running (overlapping
 calls counted once), `orch` the same for keep/allocate/stop decisions only,
-`queue` the Flex capacity waiting, `search` the time at least one search was
+`queue` the time Flex refused calls for capacity (429s; step 3's Latency
+(s) also removes estimated queueing after Azure accepted a call, so it can
+remove more), `search` the time at least one search was
 running, and `other` the rest. `model` and `orch` do not depend on the machine
-that ran the job. `search` needs runs made with a fork that records search
+that ran the job. `wall` here is the agent's own wall time; the table's raw
+wall also includes exporting the report, about 1 s more. `search` needs runs made with a fork that records search
 intervals; for older runs it shows `-` and search time is part of `other`.
 Runs from this version on also store the same numbers in
 `final_stats.latency_breakdown`.
