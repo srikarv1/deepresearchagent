@@ -188,6 +188,12 @@ intervals; for older runs it shows `-` and search time is part of `other`.
 Runs from this version on also store the same numbers in
 `final_stats.latency_breakdown`.
 
+`budget_table.py` shows the same split under the table and has a **Model (s)**
+column; use it, not Latency (s), to compare arms run on different machines.
+A rerun of extractive on the same 10 drg queries took 463 s and then 194 s of
+wall time (model 195 s and 171 s); search was active 3 to 6 s per run, so the
+spread is not the search API.
+
 ## 4. Build the table
 
 ```bash

@@ -141,6 +141,9 @@ def load_arm(arm_dir: Path, bench: str, adjusted: dict[str, dict]) -> tuple[dict
         row["Latency (s)"] = float(adj["adjusted_wall_s"]) if adj else float(summary["mean_wall_s"])
         row["_raw_latency"] = float(summary["mean_wall_s"])
         row["Model (s)"] = model_seconds(stats.get("llm_calls") or [])
+        search = (stats.get("latency_breakdown") or {}).get("search_active_s")
+        if search is not None:
+            row["_search"] = float(search)
         row["Calls"] = float(summary["mean_n_searches"])
         row["_stopped"] = 1.0 if stop.get("stopped") else 0.0
         limit = stop.get("stop_total_tokens") or stop.get("total_token_budget")
@@ -327,6 +330,14 @@ def main() -> None:
             adj = st.mean(r["Latency (s)"] for r in rows.values())
             if raw - adj >= 0.05:
                 print(f"{ARM_LABELS.get(arm, arm)}: {raw - adj:.1f}s of mean Flex waiting removed (raw wall {raw:.1f}s).")
+
+    print("\nWhere wall time goes (mean s): model calls / search (runs recorded with search intervals) / rest")
+    for arm, rows in data.items():
+        wall = st.mean(r["_raw_latency"] for r in rows.values())
+        model = st.mean(r["Model (s)"] for r in rows.values())
+        searched = [r["_search"] for r in rows.values() if "_search" in r]
+        search = f"{st.mean(searched):.1f} ({len(searched)}/{len(rows)} runs)" if searched else "not recorded"
+        print(f"{ARM_LABELS.get(arm, arm)}: wall {wall:.1f} = model {model:.1f} / search {search} / rest {wall - model:.1f} incl. search")
 
     if args.baseline not in data:
         print(f"\n(no judged runs for the baseline arm {args.baseline!r}; skipping paired differences)")
