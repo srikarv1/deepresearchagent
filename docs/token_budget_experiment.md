@@ -62,6 +62,8 @@ git -C third_party/gpt-researcher switch aadya/drb-azure-flex
 git -C third_party/gpt-researcher pull
 source .venv/bin/activate
 pip install -e ".[dev]" && pip install -e third_party/gpt-researcher
+# drg citation judge (crawls cited pages); without these, Citation stays empty
+pip install "crawl4ai==0.9.3" "playwright==1.63.0" && python -m playwright install chromium
 ```
 
 `.env` in the repository root (never commit it):
