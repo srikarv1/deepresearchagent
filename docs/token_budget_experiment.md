@@ -115,6 +115,12 @@ bash scripts/sol_budget.sh drb bc
 To run only some queries, add a comma-separated list:
 `bash scripts/sol_budget.sh drg bc 546111,442352`.
 
+- **Search guard (drb).** Before starting, every Tavily key the run can use
+  (the key pool CSV, else `TAVILY_API_KEY`) is tested with one search; with no
+  key left it refuses to start. If the keys run out mid-run (`API keys
+  exhausted` in the logs), the run stops within 20 s instead of writing the
+  remaining reports from no evidence; add credit or a key and rerun the same
+  command.
 - **Resuming.** Finished queries are skipped. After any interruption (laptop
   slept, tunnel died, Ctrl-C) run the same command again.
 - **Output.** `runs/gym_sol_budget150/<arm>/<query>-s0/` for drg,
