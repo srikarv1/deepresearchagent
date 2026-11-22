@@ -66,19 +66,34 @@ def _dr():
     return dr
 
 
+def uses_embeddings(policy: str | None) -> bool:
+    """policy.needs_embeddings of the fork's orchestration policy ``policy``."""
+    from gpt_researcher.orchestration.policies import build_policy
+    try:
+        pol = build_policy(policy or "legacy")
+    except Exception:
+        return True
+    return bool(pol is not None and getattr(pol, "needs_embeddings", False))
+
+
 def load(run_dir: Path) -> dict:
     qid = run_dir.name.split("-s")[0]
     raw = json.loads((run_dir / "gpt_researcher" / f"{qid}.json").read_text())
     stats = json.loads((run_dir / "trajectories" / f"{qid}.json").read_text())["final_stats"]
     z = np.load(run_dir / "gpt_researcher" / f"{qid}_emb.npz", allow_pickle=False)
-    vec = {str(i): z["vectors"][k].tolist() for k, i in enumerate(z["ids"])}
+    # The live writer context ranks by embeddings only when the method computes
+    # them during the run (policy.needs_embeddings); otherwise every item had
+    # none and the vectors in the npz were added afterwards.
+    live_emb = uses_embeddings((stats.get("orchestration") or {}).get("GR_ORCHESTRATOR"))
+    vec = {str(i): z["vectors"][k].tolist() for k, i in enumerate(z["ids"])} if live_emb and "ids" in z.files else {}
     items = {
         iid: Item(iid, e["source_url"], e["content"], int(e.get("retrieval_round") or 0),
                   int(e.get("tree_depth") or 0), vec.get(iid), e.get("source_subquery") or "")
         for iid, e in raw["evidence"].items()
     }
-    return dict(qid=qid, raw=raw, stats=stats, items=items, query_emb=z["query"][0].tolist(),
-                subq_emb=[v.tolist() for v in z["subquestions"]])
+    return dict(qid=qid, raw=raw, stats=stats, items=items,
+                query_emb=z["query"][0].tolist() if live_emb and "query" in z.files else None,
+                subq_emb=[v.tolist() for v in z["subquestions"]] if live_emb and "subquestions" in z.files else [])
 
 
 def split_learnings(final_context: str) -> list[str]:
