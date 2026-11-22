@@ -135,6 +135,9 @@ def load_arm(arm_dir: Path, bench: str, adjusted: dict[str, dict]) -> tuple[dict
         # earlier prototype, still read so its test runs can be inspected.
         stop = stats.get("token_stop") or stats.get("token_budget") or {}
         tokens = float(summary["mean_tokens"])
+        replay = stats.get("budget_replay") or {}
+        if replay.get("final_tokens"):  # scripts/budget_replay.py: research prefix + the new report
+            tokens = float(replay["final_tokens"])
         row = dict(scores)
         row["Tokens (K)"] = tokens / 1000.0
         adj = adjusted.get(run_dir.name)

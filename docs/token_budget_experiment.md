@@ -240,6 +240,30 @@ tar -czf drg_budget150_<arm>.tgz runs/gym_sol_budget150/<arm>
 To add someone else's arm to your table, unpack it so it lands at
 `runs/gym_sol_budget150/<arm>/`, then rerun steps 2 to 4.
 
+## Exact budgets from one run (replay)
+
+The stopping rule ends runs below the budget, by different amounts per method.
+To compare methods at exactly the same budget, research once with a generous
+budget and write the report of every smaller budget from the saved research:
+
+```bash
+BUDGET=200000 bash scripts/sol_budget.sh drg extractive           # research once
+bash scripts/sol_budget_replay.sh drg extractive 100000 150000    # one writer call per query and budget
+RUN_ROOT=runs/gym_sol_replay150 bash scripts/sol_budget_judge.sh drg extractive
+python scripts/budget_table.py drg --root runs/gym_sol_replay150
+```
+
+For budget B it keeps the plan and the sub-queries in the order they ran while
+the untrimmed writer context still fits (research + report prompt + 12K output
+<= B), rebuilds the writer context with the fork's own `build_final_context`
+from what the method had retained by then, and writes the report capped so the
+total is at most B. Every budget of a query uses the same research, so the
+difference between budgets is the budget, not new search results. It first
+checks that each run's saved pieces rebuild that run's own writer context
+exactly (`python scripts/budget_replay.py check <arm dir>`). In replay rows,
+Tokens (K) is research prefix + new report; Latency, Model (s) and Calls are the
+source run's.
+
 ## Other budgets
 
 Set `BUDGET` (tokens per query, default 150000) on every command. Each budget

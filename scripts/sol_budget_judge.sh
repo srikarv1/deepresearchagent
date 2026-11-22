@@ -25,6 +25,7 @@ case $bench in
 esac
 
 root=${root%budget150}budget$(( ${BUDGET:-150000} / 1000 ))
+root=${RUN_ROOT:-$root}  # e.g. runs/gym_sol_replay150 (scripts/sol_budget_replay.sh)
 
 # JUDGE_PASS=2,3,... judges the same reports again in <root>_pass<N>, a copy of
 # each run without its scores, so earlier scores are never overwritten or
