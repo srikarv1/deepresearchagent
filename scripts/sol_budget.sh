@@ -48,6 +48,7 @@ ids=${ids:-$default_ids}
 budget=${BUDGET:-150000}
 [[ "$budget" =~ ^[0-9]+$ ]] && [ "$budget" -ge 1000 ] || { echo "BUDGET must be a token count, got '$budget'" >&2; exit 1; }
 root=${root%budget150}budget$((budget / 1000))
+root=${RUN_ROOT:-$root}  # e.g. a separate root for a latency test
 
 if [ -f .env ]; then set -a; source .env; set +a; fi
 
