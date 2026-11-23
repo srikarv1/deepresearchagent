@@ -123,7 +123,9 @@ def load_arm(arm_dir: Path, bench: str, adjusted: dict[str, dict]) -> tuple[dict
         if not summary_path.exists() or not traj_path.exists():
             continue
         traj = json.loads(traj_path.read_text(encoding="utf-8"))
-        if not traj.get("report"):
+        report = traj.get("report")
+        if not report or (isinstance(report, dict) and not str(report.get("article") or "").strip()):
+            unjudged.append(f"{qid} (empty report)")  # a failed writer call scores 0, not a quality signal
             continue
         summary = json.loads(summary_path.read_text(encoding="utf-8"))
         scores = (gym_scores if bench == "drg" else drb_scores)(summary.get("official") or {})
@@ -143,7 +145,9 @@ def load_arm(arm_dir: Path, bench: str, adjusted: dict[str, dict]) -> tuple[dict
         adj = adjusted.get(run_dir.name)
         row["Latency (s)"] = float(adj["adjusted_wall_s"]) if adj else float(summary["mean_wall_s"])
         row["_raw_latency"] = float(summary["mean_wall_s"])
-        row["Model (s)"] = model_seconds(stats.get("llm_calls") or [])
+        # A call open while the machine slept spans the sleep in clock time;
+        # the run's wall time does not, so it caps model time.
+        row["Model (s)"] = min(model_seconds(stats.get("llm_calls") or []), float(stats.get("wall_s") or summary["mean_wall_s"]))
         search = (stats.get("latency_breakdown") or {}).get("search_active_s")
         if search is not None:
             row["_search"] = float(search)
