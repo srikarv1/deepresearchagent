@@ -7,11 +7,16 @@
 
 One row per arm, per-query means over the runs that have every judge score:
 
-  drg   Clarity Breadth Depth Support KPR Overall Citation   (DeepResearchGym judges)
+  drg   Clarity Breadth Depth Support KPR KPC Overall Citation   (DeepResearchGym judges;
+        KPC = key-point contradiction rate, lower is better)
   drb   RACE Comp. Insight Instr. Read. FACT valid           (DeepResearch Bench judges)
   both  Tokens (K)   total tokens of the run, every model
         Latency (s)  wall time with Azure Flex waiting removed, when
                      <root>/queue_adjusted.json exists (scripts/flex_queue_adjust.py)
+        Model (s)    time at least one model call was running (union of the
+                     call intervals in final_stats.llm_calls, Flex refusals
+                     excluded); unlike wall time it does not depend on the
+                     machine or network the run was generated on
         Calls        search calls
         Q per 1K t   headline score / Tokens (K)
         Stopped      runs the stopping rule stopped (final_stats.token_stop.stopped)
@@ -21,6 +26,14 @@ One row per arm, per-query means over the runs that have every judge score:
 
 Then, for every other arm, per-query paired differences against ``--baseline``
 over the queries both have, with a bootstrap 95% interval on the mean.
+
+With ``JUDGE_PASS=N bash scripts/sol_budget_judge.sh`` re-judgings present
+(``<root>_pass<N>``), each judge score is the median over passes per report.
+
+``--breakdown`` needs no judge scores: per arm, where the tokens and model time
+went by pipeline stage (plan, queries, selection, processing, report), research
+vs. report tokens, $ cost, and the token curve the same stopping rule gives at
+smaller budgets, replayed from the call log (deterministic, no API calls).
 
 Runs whose first round, or at least half of their rounds, found no evidence
 are listed as a warning (a retriever outage makes a run look cheap); ``--drop-starved`` leaves them out.
@@ -34,11 +47,13 @@ import random
 import statistics as st
 from pathlib import Path
 
+from adr.eval.latency import union_seconds
+
 BENCHES = {
     "drg": {
         "root": "runs/gym_sol_budget150",
         "headline": "Overall",
-        "columns": ("Clarity", "Breadth", "Depth", "Support", "KPR", "Overall", "Citation"),
+        "columns": ("Clarity", "Breadth", "Depth", "Support", "KPR", "KPC", "Overall", "Citation"),
     },
     "drb": {
         "root": "runs/drb_sol_budget150",
@@ -46,11 +61,11 @@ BENCHES = {
         "columns": ("RACE", "Comp.", "Insight", "Instr.", "Read.", "FACT valid"),
     },
 }
-COST_COLUMNS = ("Tokens (K)", "Latency (s)", "Calls")
+COST_COLUMNS = ("Tokens (K)", "Latency (s)", "Model (s)", "Calls")
 ARM_LABELS = {"none": "No pruning", "prompted": "Prompted orchestration", "extractive": "Extractive compression",
               "bc": "PILOT (BC)", "dpo": "PILOT (DPO)"}
 ARM_ORDER = ("none", "prompted", "extractive", "bc", "dpo")
-LOWER_IS_BETTER = {"Tokens (K)", "Latency (s)", "Calls"}
+LOWER_IS_BETTER = {"Tokens (K)", "Latency (s)", "Model (s)", "Calls", "KPC"}
 
 
 def gym_scores(official: dict) -> dict[str, float] | None:
@@ -61,6 +76,7 @@ def gym_scores(official: dict) -> dict[str, float] | None:
     crit = quality.get("per_criterion") or {}
     row = {c: float(crit[c]["average_rating"]) for c in ("Clarity", "Breadth", "Depth", "Support")}
     row["KPR"] = float(kpr["average_support_rate"])
+    row["KPC"] = float(kpr.get("average_contradicted_rate") or 0.0)
     row["Overall"] = float(quality["average_normalized_score"])
     row["Citation"] = float(cite["average_citation_score"])
     return row
@@ -79,6 +95,13 @@ def drb_scores(official: dict) -> dict[str, float] | None:
     row = {label: float(race[key]) for label, key in keys.items()}
     row["FACT valid"] = float(fact["valid_rate"])
     return row
+
+
+def model_seconds(calls: list[dict]) -> float:
+    """Time at least one model call was running (overlaps counted once), minus
+    the time each call spent being refused for capacity (Flex 429s)."""
+    return union_seconds([(float(c["start"]) + float(c.get("capacity_wait_s") or 0.0), float(c["end"]))
+                          for c in calls if c.get("start") is not None and c.get("end") is not None])
 
 
 def starved(traj: dict) -> bool:
@@ -100,7 +123,9 @@ def load_arm(arm_dir: Path, bench: str, adjusted: dict[str, dict]) -> tuple[dict
         if not summary_path.exists() or not traj_path.exists():
             continue
         traj = json.loads(traj_path.read_text(encoding="utf-8"))
-        if not traj.get("report"):
+        report = traj.get("report")
+        if not report or (isinstance(report, dict) and not str(report.get("article") or "").strip()):
+            unjudged.append(f"{qid} (empty report)")  # a failed writer call scores 0, not a quality signal
             continue
         summary = json.loads(summary_path.read_text(encoding="utf-8"))
         scores = (gym_scores if bench == "drg" else drb_scores)(summary.get("official") or {})
@@ -112,11 +137,20 @@ def load_arm(arm_dir: Path, bench: str, adjusted: dict[str, dict]) -> tuple[dict
         # earlier prototype, still read so its test runs can be inspected.
         stop = stats.get("token_stop") or stats.get("token_budget") or {}
         tokens = float(summary["mean_tokens"])
+        replay = stats.get("budget_replay") or {}
+        if replay.get("final_tokens"):  # scripts/budget_replay.py: research prefix + the new report
+            tokens = float(replay["final_tokens"])
         row = dict(scores)
         row["Tokens (K)"] = tokens / 1000.0
         adj = adjusted.get(run_dir.name)
         row["Latency (s)"] = float(adj["adjusted_wall_s"]) if adj else float(summary["mean_wall_s"])
         row["_raw_latency"] = float(summary["mean_wall_s"])
+        # A call open while the machine slept spans the sleep in clock time;
+        # the run's wall time does not, so it caps model time.
+        row["Model (s)"] = min(model_seconds(stats.get("llm_calls") or []), float(stats.get("wall_s") or summary["mean_wall_s"]))
+        search = (stats.get("latency_breakdown") or {}).get("search_active_s")
+        if search is not None:
+            row["_search"] = float(search)
         row["Calls"] = float(summary["mean_n_searches"])
         row["_stopped"] = 1.0 if stop.get("stopped") else 0.0
         limit = stop.get("stop_total_tokens") or stop.get("total_token_budget")
@@ -145,6 +179,95 @@ def fmt(col: str, v: float) -> str:
     return f"{v:.1f}"
 
 
+def median_over_passes(rows: dict[str, dict], extra: list[dict[str, dict]], columns) -> dict[str, dict]:
+    """Replace each judge score by its median over the first pass and the
+    ``JUDGE_PASS`` re-judgings (scripts/sol_budget_judge.sh) of the same report.
+    Cost columns come from the run itself and are left as they are."""
+    out = {}
+    for qid, row in rows.items():
+        row = dict(row)
+        for col in columns:
+            vals = [row[col]] + [p[qid][col] for p in extra if qid in p and col in p[qid]]
+            row[col] = st.median(vals)
+        out[qid] = row
+    return out
+
+
+STAGES = {"deep_research_plan": "plan", "deep_search_query_gen": "queries", "subquery_generation": "queries",
+          "agent_selection": "selection", "orchestrator": "selection", "deep_process_results": "processing",
+          "report_generation": "report"}
+
+
+def replay_tokens(calls: list[dict], budget: int) -> float:
+    """Total tokens the run would end with had the same stopping rule used
+    ``budget``: the plan is always paid; before each sub-query (selection,
+    generation and processing calls up to its processing call) stop if used +
+    largest sub-query so far + this run's report cost would exceed the budget.
+    The report cost is this run's own, so smaller budgets are slightly overstated."""
+    tok = lambda c: c.get("input_tokens", 0) + c.get("output_tokens", 0)
+    report = sum(tok(c) for c in calls if c.get("usage_tag") == "report_generation")
+    used, units, unit = 0, [], 0
+    for c in calls:
+        tag = c.get("usage_tag")
+        if tag == "report_generation":
+            continue
+        if tag == "deep_research_plan":
+            used += tok(c)
+            continue
+        unit += tok(c)
+        if tag == "deep_process_results":
+            units.append(unit)
+            unit = 0
+    biggest = 0
+    for u in units:
+        if biggest and used + biggest + report > budget:
+            break
+        used, biggest = used + u, max(biggest, u)
+    return used + report
+
+
+def breakdown(root: Path, arms: list[str], budget: int) -> None:
+    budgets = [b for b in (60_000, 80_000, 100_000, 120_000) if b < budget] + [budget]
+    stages = ("plan", "queries", "selection", "processing", "report")
+    print("| Approach | n | Tokens (K) | Research (K) | Report (K) | $ / query | "
+          + " | ".join(f"{s} % tok" for s in stages) + " | " + " | ".join(f"{s} model-s" for s in stages) + " |")
+    print("|" + "---|" * (6 + 2 * len(stages)))
+    curves = {}
+    for arm in arms:
+        per = []
+        for f in sorted((root / arm).glob("*-s*/trajectories/*.json")):
+            stats = json.loads(f.read_text(encoding="utf-8")).get("final_stats") or {}
+            calls = stats.get("llm_calls") or []
+            if calls:
+                per.append((stats, calls))
+        if not per:
+            continue
+        rows = []
+        for stats, calls in per:
+            tok = {s: 0.0 for s in stages}
+            sec = {s: 0.0 for s in stages}
+            for c in calls:
+                s = STAGES.get(c.get("usage_tag"))
+                if s:
+                    tok[s] += c.get("input_tokens", 0) + c.get("output_tokens", 0)
+                    sec[s] += c.get("duration_s") or 0.0
+            total = sum(c.get("input_tokens", 0) + c.get("output_tokens", 0) for c in calls)
+            rows.append((total, tok, sec, float(stats.get("total_cost_usd") or 0.0)))
+        m = lambda xs: st.mean(xs)
+        cells = [ARM_LABELS.get(arm, arm), str(len(rows)), f"{m([r[0] for r in rows]) / 1e3:.1f}",
+                 f"{m([r[0] - r[1]['report'] for r in rows]) / 1e3:.1f}", f"{m([r[1]['report'] for r in rows]) / 1e3:.1f}",
+                 f"{m([r[3] for r in rows]):.3f}"]
+        cells += [f"{m([100 * r[1][s] / r[0] for r in rows]):.1f}" for s in stages]
+        cells += [f"{m([r[2][s] for r in rows]):.0f}" for s in stages]
+        print("| " + " | ".join(cells) + " |")
+        curves[arm] = [m([replay_tokens(c, b) for _, c in per]) / 1e3 for b in budgets]
+    print("\nmodel-s sums call durations (parallel calls overlap). Token curve replayed from the call log:")
+    print("| Approach | " + " | ".join(f"{b // 1000}K" for b in budgets) + " |")
+    print("|" + "---|" * (1 + len(budgets)))
+    for arm, curve in curves.items():
+        print(f"| {ARM_LABELS.get(arm, arm)} | " + " | ".join(f"{v:.1f}" for v in curve) + " |")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("bench", choices=sorted(BENCHES))
@@ -152,6 +275,7 @@ def main() -> None:
     ap.add_argument("--root", type=Path, help="run root (default: the bench's root for --budget)")
     ap.add_argument("--arms", nargs="*", help="arm directories under the root (default: all, in table order)")
     ap.add_argument("--baseline", default="none", help="arm the others are paired against (default: none)")
+    ap.add_argument("--breakdown", action="store_true", help="stage token/time breakdown and replayed budget curve (no judge scores needed)")
     ap.add_argument("--drop-starved", action="store_true", help="leave out runs flagged as starved of evidence")
     args = ap.parse_args()
 
@@ -161,6 +285,10 @@ def main() -> None:
         p.name for p in root.iterdir() if p.is_dir() and p.name not in ARM_ORDER and any(p.glob("*-s*")))
     if not arms:
         raise SystemExit(f"{root}: no arm directories with runs")
+
+    if args.breakdown:
+        breakdown(root, arms, args.budget)
+        return
 
     adjusted_path = root / "queue_adjusted.json"
     adjusted_all = json.loads(adjusted_path.read_text(encoding="utf-8"))["runs"] if adjusted_path.exists() else {}
@@ -177,6 +305,10 @@ def main() -> None:
             print(f"warning: {arm}: {len(starved_ids)} run(s) starved of evidence, {action}: {', '.join(starved_ids)}")
             if args.drop_starved:
                 rows = {q: r for q, r in rows.items() if q not in starved_ids}
+        passes = sorted(root.parent.glob(f"{root.name}_pass*/{arm}"))
+        if passes and rows:
+            rows = median_over_passes(rows, [load_arm(p, args.bench, {})[0] for p in passes], spec["columns"])
+            print(f"note: {arm}: judge scores are the per-report median over {len(passes) + 1} passes")
         if rows:
             data[arm] = rows
     if not data:
@@ -205,6 +337,14 @@ def main() -> None:
             adj = st.mean(r["Latency (s)"] for r in rows.values())
             if raw - adj >= 0.05:
                 print(f"{ARM_LABELS.get(arm, arm)}: {raw - adj:.1f}s of mean Flex waiting removed (raw wall {raw:.1f}s).")
+
+    print("\nWhere wall time goes (mean s): model calls / search (runs recorded with search intervals) / rest")
+    for arm, rows in data.items():
+        wall = st.mean(r["_raw_latency"] for r in rows.values())
+        model = st.mean(r["Model (s)"] for r in rows.values())
+        searched = [r["_search"] for r in rows.values() if "_search" in r]
+        search = f"{st.mean(searched):.1f} ({len(searched)}/{len(rows)} runs)" if searched else "not recorded"
+        print(f"{ARM_LABELS.get(arm, arm)}: wall {wall:.1f} = model {model:.1f} / search {search} / rest {wall - model:.1f} incl. search")
 
     if args.baseline not in data:
         print(f"\n(no judged runs for the baseline arm {args.baseline!r}; skipping paired differences)")

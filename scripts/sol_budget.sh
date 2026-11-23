@@ -48,6 +48,7 @@ ids=${ids:-$default_ids}
 budget=${BUDGET:-150000}
 [[ "$budget" =~ ^[0-9]+$ ]] && [ "$budget" -ge 1000 ] || { echo "BUDGET must be a token count, got '$budget'" >&2; exit 1; }
 root=${root%budget150}budget$((budget / 1000))
+root=${RUN_ROOT:-$root}  # e.g. a separate root for a latency test
 
 if [ -f .env ]; then set -a; source .env; set +a; fi
 
@@ -92,10 +93,52 @@ case $bench in
   drb) [ -n "${TAVILY_API_KEY:-}${TAVILY_KEYS_CSV:-}" ] || { echo "drb needs TAVILY_API_KEY or TAVILY_KEYS_CSV" >&2; exit 1; } ;;
 esac
 
+# Search must work before any money is spent: with exhausted keys Tavily answers
+# HTTP 432 and every report would be written from no evidence. Tests the keys
+# the run will use (the fork's key pool env/tavily.csv or TAVILY_KEYS_CSV, else
+# TAVILY_API_KEY) with one basic search each (1 credit); keys are never printed.
+if [ "$bench" = drb ]; then
+  .venv/bin/python - "$fork" <<'PY' || { echo "No Tavily key with credit (HTTP 432 = out of credits, 401 = bad key). Not starting." >&2; exit 1; }
+import csv, json, os, sys, urllib.request, urllib.error
+from pathlib import Path
+pool = Path(sys.argv[1]) / "env" / "tavily.csv"
+if not pool.exists() and os.environ.get("TAVILY_KEYS_CSV"):
+    pool = Path(os.environ["TAVILY_KEYS_CSV"])
+keys = [r["api_key"].strip() for r in csv.DictReader(open(pool)) if (r.get("api_key") or "").strip()] if pool.exists() else []
+keys = keys or [k for k in [os.environ.get("TAVILY_API_KEY", "")] if k]
+ok = 0
+for k in keys:
+    req = urllib.request.Request("https://api.tavily.com/search", method="POST",
+        data=json.dumps({"query": "preflight", "max_results": 1, "search_depth": "basic"}).encode(),
+        headers={"Authorization": f"Bearer {k}", "Content-Type": "application/json"})
+    try:
+        ok += urllib.request.urlopen(req, timeout=30).status == 200
+    except urllib.error.HTTPError as e:
+        print(f"Tavily key ...{k[-4:]}: HTTP {e.code}", file=sys.stderr)
+    except Exception as e:
+        print(f"Tavily key ...{k[-4:]}: {type(e).__name__}", file=sys.stderr)
+print(f"Tavily: {ok}/{len(keys)} keys have credit", file=sys.stderr)
+sys.exit(0 if ok else 1)
+PY
+fi
+
 keep_awake=()
 command -v caffeinate >/dev/null 2>&1 && keep_awake=(caffeinate -i)
 
 echo "token-budget run: bench=$bench arm=$arm policy=$policy budget=$budget -> $root/$arm ($(echo "$ids" | tr ',' '\n' | wc -l | tr -d ' ') queries)"
-exec ${keep_awake[@]+"${keep_awake[@]}"} .venv/bin/adr rollouts -c "$config" \
+${keep_awake[@]+"${keep_awake[@]}"} .venv/bin/adr rollouts -c "$config" \
     --out "$root/$arm" --policy "$policy" \
-    --n-seeds 1 --seed-base 0 --query-ids "$ids" ${extra[@]+"${extra[@]}"} "$@"
+    --n-seeds 1 --seed-base 0 --query-ids "$ids" ${extra[@]+"${extra[@]}"} "$@" &
+pid=$!
+started=$(mktemp); trap 'rm -f "$started"' EXIT
+# Stop as soon as search is exhausted (Tavily "keys exhausted") instead of
+# writing the remaining reports from no evidence. The query that was running is
+# left without a trajectory, so rerunning the same command redoes it.
+while kill -0 "$pid" 2>/dev/null; do
+  if find "$root/$arm/logs" -name '*.log' -newer "$started" -exec grep -l "API keys exhausted" {} + 2>/dev/null | grep -q .; then
+    echo "search exhausted (see $root/$arm/logs); stopping this run" >&2
+    pkill -P "$pid" 2>/dev/null; kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; exit 3
+  fi
+  sleep 20
+done
+wait "$pid"

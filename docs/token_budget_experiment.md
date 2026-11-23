@@ -62,6 +62,8 @@ git -C third_party/gpt-researcher switch aadya/drb-azure-flex
 git -C third_party/gpt-researcher pull
 source .venv/bin/activate
 pip install -e ".[dev]" && pip install -e third_party/gpt-researcher
+# drg citation judge (crawls cited pages); without these, Citation stays empty
+pip install "crawl4ai==0.9.3" "playwright==1.63.0" && python -m playwright install chromium
 ```
 
 `.env` in the repository root (never commit it):
@@ -113,6 +115,12 @@ bash scripts/sol_budget.sh drb bc
 To run only some queries, add a comma-separated list:
 `bash scripts/sol_budget.sh drg bc 546111,442352`.
 
+- **Search guard (drb).** Before starting, every Tavily key the run can use
+  (the key pool CSV, else `TAVILY_API_KEY`) is tested with one search; with no
+  key left it refuses to start. If the keys run out mid-run (`API keys
+  exhausted` in the logs), the run stops within 20 s instead of writing the
+  remaining reports from no evidence; add credit or a key and rerun the same
+  command.
 - **Resuming.** Finished queries are skipped. After any interruption (laptop
   slept, tunnel died, Ctrl-C) run the same command again.
 - **Output.** `runs/gym_sol_budget150/<arm>/<query>-s0/` for drg,
@@ -168,6 +176,35 @@ visible any other way; `llm_call_summary.wall_s_excl_capacity_wait` in the
 trajectory removes only (a). Overlapping waits are counted once. It writes
 `<run root>/queue_adjusted.json`.
 
+### Where the rest of the wall time goes
+
+Arms were run on different machines and at different times, and roughly half
+of a run's wall time is not model time at all: web search, page fetching and
+embedding calls, which depend on the network. To compare arms fairly:
+
+```bash
+python scripts/latency_breakdown.py runs/gym_sol_budget150
+python scripts/latency_breakdown.py runs/drb_sol_budget150
+```
+
+Per arm, `model` is the time at least one model call was running (overlapping
+calls counted once), `orch` the same for keep/allocate/stop decisions only,
+`queue` the time Flex refused calls for capacity (429s; step 3's Latency
+(s) also removes estimated queueing after Azure accepted a call, so it can
+remove more), `search` the time at least one search was
+running, and `other` the rest. `model` and `orch` do not depend on the machine
+that ran the job. `wall` here is the agent's own wall time; the table's raw
+wall also includes exporting the report, about 1 s more. `search` needs runs made with a fork that records search
+intervals; for older runs it shows `-` and search time is part of `other`.
+Runs from this version on also store the same numbers in
+`final_stats.latency_breakdown`.
+
+`budget_table.py` shows the same split under the table and has a **Model (s)**
+column; use it, not Latency (s), to compare arms run on different machines.
+A rerun of extractive on the same 10 drg queries took 463 s and then 194 s of
+wall time (model 195 s and 171 s); search was active 3 to 6 s per run, so the
+spread is not the search API.
+
 ## 4. Build the table
 
 ```bash
@@ -181,6 +218,15 @@ against No pruning with a bootstrap 95% interval. Extra columns:
 - **Stopped**: runs the stopping rule stopped, out of runs with the rule on.
 - **Over**: runs that ended above 150K (`ended_above_target`); should be 0.
 - **Trimmed**: runs whose report context the hard cap cut to fit.
+
+`--breakdown` needs no judge scores. Per arm it shows where tokens and model
+time went (plan, queries, selection, processing, report), research vs. report
+tokens, $ per query, and the tokens the same stopping rule would end with at
+60K/80K/100K/120K, replayed from the call log (no API calls):
+
+```bash
+python scripts/budget_table.py drg --breakdown
+```
 
 It warns about reports without all judge scores (left out) and about runs
 starved of evidence: the first round, or at least half the rounds, found
@@ -199,6 +245,30 @@ tar -czf drg_budget150_<arm>.tgz runs/gym_sol_budget150/<arm>
 
 To add someone else's arm to your table, unpack it so it lands at
 `runs/gym_sol_budget150/<arm>/`, then rerun steps 2 to 4.
+
+## Exact budgets from one run (replay)
+
+The stopping rule ends runs below the budget, by different amounts per method.
+To compare methods at exactly the same budget, research once with a generous
+budget and write the report of every smaller budget from the saved research:
+
+```bash
+BUDGET=200000 bash scripts/sol_budget.sh drg extractive           # research once
+bash scripts/sol_budget_replay.sh drg extractive 100000 150000    # one writer call per query and budget
+RUN_ROOT=runs/gym_sol_replay150 bash scripts/sol_budget_judge.sh drg extractive
+python scripts/budget_table.py drg --root runs/gym_sol_replay150
+```
+
+For budget B it keeps the plan and the sub-queries in the order they ran while
+the untrimmed writer context still fits (research + report prompt + 12K output
+<= B), rebuilds the writer context with the fork's own `build_final_context`
+from what the method had retained by then, and writes the report capped so the
+total is at most B. Every budget of a query uses the same research, so the
+difference between budgets is the budget, not new search results. It first
+checks that each run's saved pieces rebuild that run's own writer context
+exactly (`python scripts/budget_replay.py check <arm dir>`). In replay rows,
+Tokens (K) is research prefix + new report; Latency, Model (s) and Calls are the
+source run's.
 
 ## Other budgets
 
