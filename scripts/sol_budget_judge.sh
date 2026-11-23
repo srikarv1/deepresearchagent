@@ -78,7 +78,20 @@ n=$(echo "$todo" | grep -c . || true)
 echo "$(date +%H:%M) $bench: $n report(s) to judge, ${JOBS:-2} at a time"
 [ "$n" -eq 0 ] && exit 0
 export BUDGET_OFFICIAL=$official BUDGET_CONFIG=$config
-echo "$todo" | grep . | xargs -P "${JOBS:-2}" -n 1 sh -c '
-  .venv/bin/adr evaluate "$1" --official "$BUDGET_OFFICIAL" -c "$BUDGET_CONFIG" > "$1/judge.log" 2>&1 \
-    && echo "$(date +%H:%M) judged $1" || echo "$(date +%H:%M) FAILED $1 (see $1/judge.log)"' _ || true
+# A report whose judging hangs (the citation crawler can stall for hours) is
+# stopped after JUDGE_TIMEOUT_S seconds and retried on the next run.
+export JUDGE_TIMEOUT_S=${JUDGE_TIMEOUT_S:-2400}
+jobs=${JOBS:-2}
+if [ "$bench" = drb ]; then
+  # The DeepResearch Bench pipeline stages every report into the same files of
+  # its checkout, so two judgings at once overwrite each other: one at a time,
+  # and only one judge script per checkout.
+  jobs=1
+  lock=third_party/deep_research_bench/.adr_judge.lock
+  mkdir "$lock" 2>/dev/null || { echo "another drb judging is running ($lock); wait for it or remove the lock" >&2; exit 1; }
+  trap 'rmdir "$lock" 2>/dev/null' EXIT
+fi
+echo "$todo" | grep . | xargs -P "$jobs" -n 1 sh -c '
+  perl -e "alarm shift; exec @ARGV" "$JUDGE_TIMEOUT_S" .venv/bin/adr evaluate "$1" --official "$BUDGET_OFFICIAL" -c "$BUDGET_CONFIG" > "$1/judge.log" 2>&1 \
+    && echo "$(date +%H:%M) judged $1" || echo "$(date +%H:%M) FAILED or timed out $1 (see $1/judge.log)"' _ || true
 echo "$(date +%H:%M) done; run this again to retry anything still missing, then scripts/budget_table.py $bench"

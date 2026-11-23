@@ -234,7 +234,10 @@ async def write_one(run_dir: Path, run: dict, cut: dict, out_dir: Path) -> dict:
     researcher.context = dr._context_text(cut["context"])
     limit = int(getattr(researcher.cfg, "smart_token_limit", 0) or 0)  # as the live hard cap
     researcher.cfg.smart_token_limit = max(1, min(limit, int(cut["max_output"])) if limit else int(cut["max_output"]))
+    import time
+    t0 = time.perf_counter()
     report = await researcher.write_report()
+    writer_s = time.perf_counter() - t0
     used_in = TokenTracker.total_input_tokens - before[0]
     used_out = TokenTracker.total_output_tokens - before[1]
     if out_dir.exists():
@@ -247,7 +250,7 @@ async def write_one(run_dir: Path, run: dict, cut: dict, out_dir: Path) -> dict:
     traj["report"] = {**(traj.get("report") or {}), "article": report, "citations": _citations(report)}
     traj["final_stats"]["budget_replay"] = {k: v for k, v in cut.items() if k != "context"} | dict(
         source_run=str(run_dir), report_input_tokens=used_in, report_output_tokens=used_out, final_tokens=total,
-        report_max_output_tokens=researcher.cfg.smart_token_limit)
+        report_max_output_tokens=researcher.cfg.smart_token_limit, report_writer_s=round(writer_s, 2))
     traj_path.write_text(json.dumps(traj, ensure_ascii=False))
     summary_path = out_dir / "metrics" / "summary.json"  # budget_table reads tokens from here
     summary_path.parent.mkdir(parents=True, exist_ok=True)
