@@ -55,3 +55,10 @@ def test_script_reads_existing_runs(tmp_path, capsys):
     assert mod.main([str(tmp_path)]) == 0
     out = capsys.readouterr().out
     assert "bc" in out and "9.0" in out and "5.0" in out
+
+
+def test_interval_spanning_a_sleep_is_capped_at_wall():
+    # A search left open while the laptop slept spans far more clock time than the run's wall time.
+    bd = latency_breakdown(100.0, [], [(0, 6000)])
+    assert bd["search_active_s"] == 100.0
+    assert bd["other_s"] == 0.0

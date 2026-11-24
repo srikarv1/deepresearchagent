@@ -197,17 +197,20 @@ def headline_scores(official: dict[str, Any]) -> dict[str, float]:
             flat[f"fact_{key}"] = float(fact[key])
 
     gym = official.get("deep_research_gym") or {}
-    quality = gym.get("quality") or {}
+    # A judge call that failed (e.g. out of credits) leaves n == 0 with averages
+    # of 0.0; those are "not judged", not scores of zero.
+    judged = lambda block: bool((block or {}).get("n", 1))
+    quality = (gym.get("quality") or {}) if judged(gym.get("quality")) else {}
     if isinstance(quality.get("average_normalized_score"), (int, float)):
         flat["gym_quality"] = float(quality["average_normalized_score"])
     for name, row in (quality.get("per_criterion") or {}).items():
         if isinstance(row, dict) and isinstance(row.get("average_rating"), (int, float)):
             flat[f"gym_quality_{name.lower()}"] = float(row["average_rating"])
-    kpr = gym.get("kpr") or {}
+    kpr = (gym.get("kpr") or {}) if judged(gym.get("kpr")) else {}
     for key in ("average_support_rate", "average_omitted_rate", "average_contradicted_rate"):
         if isinstance(kpr.get(key), (int, float)):
             flat[f"gym_{key}"] = float(kpr[key])
-    citation = gym.get("citation") or {}
+    citation = (gym.get("citation") or {}) if judged(gym.get("citation")) else {}
     if isinstance(citation.get("average_citation_score"), (int, float)):
         flat["gym_citation_score"] = float(citation["average_citation_score"])
 
