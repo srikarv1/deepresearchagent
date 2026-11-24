@@ -72,14 +72,17 @@ def latency_breakdown(
         for iv in [_call_interval(c)] if iv
     ]
     search_iv = list(search_intervals) if search_intervals else []
-    llm_active = union_seconds(llm_iv)
+    # An interval open while the machine slept spans the sleep in clock time,
+    # which the run's wall time does not; no activity can exceed wall time.
+    wall = float(wall_s)
+    llm_active = min(union_seconds(llm_iv), wall)
     busy = union_seconds(llm_iv + search_iv)
     return {
         "wall_s": round(float(wall_s), 3),
         "llm_active_s": round(llm_active, 3),
-        "orchestrator_active_s": round(union_seconds(orch_iv), 3),
+        "orchestrator_active_s": round(min(union_seconds(orch_iv), wall), 3),
         "n_orchestrator_calls": len(orch_iv),
         "capacity_wait_s": round(sum(float(c.get("capacity_wait_s") or 0.0) for c in calls), 3),
-        "search_active_s": round(union_seconds(search_iv), 3) if search_iv else None,
+        "search_active_s": round(min(union_seconds(search_iv), wall), 3) if search_iv else None,
         "other_s": round(max(0.0, float(wall_s) - busy), 3),
     }

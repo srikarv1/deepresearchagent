@@ -165,3 +165,15 @@ def test_race_parser_on_real_upstream_results():
         scores = parse_key_value_report(path)
         assert "overall_score" in scores
         assert 0.0 <= scores["overall_score"] <= 1.0
+
+
+def test_failed_gym_judging_is_not_a_zero_score():
+    # A judge call that failed (n == 0) must not appear as a 0 score.
+    official = {"deep_research_gym": {
+        "quality": {"n": 0, "average_normalized_score": 0.0, "per_criterion": {}},
+        "kpr": {"n": 0, "average_support_rate": 0.0, "average_omitted_rate": 0.0, "average_contradicted_rate": 0.0},
+        "citation": {"n": 1, "average_citation_score": 80.0},
+    }}
+    flat = headline_scores(official)
+    assert "gym_quality" not in flat and "gym_average_support_rate" not in flat
+    assert flat["gym_citation_score"] == 80.0

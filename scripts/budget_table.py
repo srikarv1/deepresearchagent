@@ -149,7 +149,9 @@ def load_arm(arm_dir: Path, bench: str, adjusted: dict[str, dict]) -> tuple[dict
         # the run's wall time does not, so it caps model time.
         row["Model (s)"] = min(model_seconds(stats.get("llm_calls") or []), float(stats.get("wall_s") or summary["mean_wall_s"]))
         search = (stats.get("latency_breakdown") or {}).get("search_active_s")
-        if search is not None:
+        # Search longer than the run itself means an interval spans a sleep:
+        # that run's search time is unknown and is left out of the mean.
+        if search is not None and float(search) < float(stats.get("wall_s") or summary["mean_wall_s"]):
             row["_search"] = float(search)
         row["Calls"] = float(summary["mean_n_searches"])
         row["_stopped"] = 1.0 if stop.get("stopped") else 0.0
