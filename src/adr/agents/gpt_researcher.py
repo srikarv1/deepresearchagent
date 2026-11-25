@@ -282,6 +282,31 @@ class GPTResearcherAgent:
             return None
 
     @staticmethod
+    def _research_budget_stats(deep: Any, TokenTracker: Any, gtraj: Any, wall: float | None) -> dict[str, Any]:
+        """GR_RESEARCH_BUDGET record from the fork plus the research / writer
+        split of tokens and wall time. Empty budget fields when the fork
+        predates the research budget."""
+        info = dict(getattr(deep, "research_budget_info", None) or {})
+        per_tag = TokenTracker.get_per_usage_totals() if hasattr(TokenTracker, "get_per_usage_totals") else {}
+        writer = per_tag.get("report_generation") or {}
+        orch = per_tag.get("orchestrator") or {}
+        synth = getattr(gtraj, "synthesis_cost", None)
+        writer_s = float(getattr(synth, "latency_seconds", 0.0) or 0.0) if synth is not None else None
+        info.update(
+            writer_input_tokens=int(writer.get("input", 0) or 0),
+            writer_output_tokens=int(writer.get("output", 0) or 0),
+            orchestrator_input_tokens=int(orch.get("input", 0) or 0),
+            orchestrator_output_tokens=int(orch.get("output", 0) or 0),
+            writer_wall_s=writer_s,
+            research_wall_s=(float(wall) - writer_s) if (wall is not None and writer_s is not None) else None,
+        )
+        budget = info.get("research_budget")
+        spend = info.get("research_spend")
+        if budget and spend is not None:
+            info["spend_over_budget"] = float(spend) - float(budget)
+        return info
+
+    @staticmethod
     def _token_stop_stats(deep: Any, TokenTracker: Any, gtraj: Any) -> dict[str, Any]:
         """The fork's token stopping-rule record plus how the run actually ended.
 
@@ -343,6 +368,10 @@ class GPTResearcherAgent:
         # Token stopping rule (GR_STOP_TOTAL_TOKENS): whether it stopped research,
         # and whether the run still ended above the target.
         traj.final_stats["token_stop"] = self._token_stop_stats(deep, TokenTracker, gtraj)
+        # Research-only budget (GR_RESEARCH_BUDGET): spend before writing, whether
+        # and when it ran out, ignored TERMINATEs, and the research/writer split
+        # of tokens and wall time (research latency excludes the report).
+        traj.final_stats["research_budget"] = self._research_budget_stats(deep, TokenTracker, gtraj, wall)
         # One record per LLM call (start, end, tokens, tier, attempts, Flex
         # capacity waits); wall_s_excl_capacity_wait takes Flex queueing out
         # of latency (calls run one at a time at concurrency 1).
