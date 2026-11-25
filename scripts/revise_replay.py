@@ -9,6 +9,7 @@ variants of the report, all written by the same writer model:
   b100rev   the existing exact-100K report (scripts/budget_replay.py), then the
             revision pass: ~130K in total, matched to the exact-150K report (~134K)
   b100polish  the same 100K report, revised for clarity only (control: no sub-question check)
+  b100revlen  b100rev, but the report must keep its length (within 10%)
 
 r1 and r1rev share the draft, and fullrev shares the 200K report, so each
 difference measures one change. The revision pass sees the question, its
@@ -61,6 +62,12 @@ Revise the draft.
 4. Keep the length similar; at most about 30% longer.
 
 Return only the full revised report in markdown, with no comments about the changes."""
+
+# Same targeting, but length-neutral: the judge favours longer reports, so this
+# variant must make room for missing answers instead of growing the report.
+SAMELEN = PROMPT.replace(
+    "4. Keep the length similar; at most about 30% longer.",
+    "4. Keep the length the same as the draft (within 10%). To make room for missing answers, shorten or remove less important passages.")
 
 # Control: same inputs and length limit, but no sub-question check, so a gain
 # over it comes from the targeting rather than from a second pass as such.
@@ -201,7 +208,7 @@ def main() -> None:
                 copy_run(r1, dest)
                 res = asyncio.run(revise(dest, qid, ctx_text))
                 print(f"{d.name} r1rev: total {res['total']} (draft {res['draft']}, revision {res['revise_in']}+{res['revise_out']})", flush=True)
-        for v, prompt in (("b100rev", PROMPT), ("b100polish", POLISH)):
+        for v, prompt in (("b100rev", PROMPT), ("b100polish", POLISH), ("b100revlen", SAMELEN)):
             if v not in args.variants:
                 continue
             src100 = Path(f"{args.out}_replay100") / arm / d.name
