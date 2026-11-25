@@ -332,8 +332,18 @@ def _fact(
             break
 
     result_file = out_dir / "fact_result.txt"
-    return {
+    out: dict[str, Any] = {
         "scores": parse_key_value_report(result_file),
         "path": str(result_file),
         "stages": logs,
     }
+    # As for RACE: the citations counted must come from this run's reports only.
+    def ids(path: Path) -> set[str]:
+        if not path.exists():
+            return set()
+        return {str(json.loads(line).get("id")) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()}
+    staged, validated = ids(raw_path), ids(out_dir / "validated.jsonl")
+    if out["scores"] and validated != staged:
+        out["error"] = f"FACT validated ids {sorted(validated)}, staged {sorted(staged)}"
+        out["scores"] = {}
+    return out
