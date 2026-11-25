@@ -45,6 +45,16 @@ DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
 DEFAULT_EMBED_MODEL = "qwen3-embedding:8b"
 
 
+def normalize_ollama_url(value: str | None) -> str:
+    """Ollama's ``OLLAMA_HOST`` is ``host:port``; urllib needs a scheme."""
+    raw = (value or "").strip()
+    if not raw:
+        return DEFAULT_OLLAMA_URL
+    if "://" not in raw:
+        raw = "http://" + raw
+    return raw.rstrip("/")
+
+
 class QueryEmbedder(Protocol):
     """Blocking query encoder. Tests inject a fake; production uses Ollama."""
 
@@ -189,9 +199,7 @@ class OllamaEmbedder:
         timeout_s: float = 60.0,
     ) -> None:
         self.model = model
-        self.base_url = (base_url or os.environ.get("OLLAMA_HOST") or DEFAULT_OLLAMA_URL).rstrip(
-            "/"
-        )
+        self.base_url = normalize_ollama_url(base_url or os.environ.get("OLLAMA_HOST"))
         env_prefix = os.environ.get("ADR_BCP_QUERY_PREFIX")
         self.prefix = DEFAULT_QUERY_PREFIX if env_prefix is None else env_prefix
         if prefix is not None:
