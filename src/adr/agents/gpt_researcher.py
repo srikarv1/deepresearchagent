@@ -307,6 +307,15 @@ class GPTResearcherAgent:
         return info
 
     @staticmethod
+    def _report_length_stats() -> dict[str, Any]:
+        """GR_REPORT_WORDS outcome from the fork; empty when the fork predates it."""
+        try:
+            from gpt_researcher.actions import report_generation as rg
+        except ImportError:
+            return {}
+        return dict(getattr(rg, "REPORT_LENGTH_LOG", None) or {})
+
+    @staticmethod
     def _token_stop_stats(deep: Any, TokenTracker: Any, gtraj: Any) -> dict[str, Any]:
         """The fork's token stopping-rule record plus how the run actually ended.
 
@@ -372,6 +381,11 @@ class GPTResearcherAgent:
         # and when it ran out, ignored TERMINATEs, and the research/writer split
         # of tokens and wall time (research latency excludes the report).
         traj.final_stats["research_budget"] = self._research_budget_stats(deep, TokenTracker, gtraj, wall)
+        # What reached the writer: words collected vs used and which cap cut
+        # them (all cuts 0 means nothing was truncated), plus the report's
+        # length target outcome (first-draft words, whether it was rewritten).
+        traj.final_stats["writer_context"] = dict(getattr(deep, "writer_context_info", None) or {})
+        traj.final_stats["report_length"] = self._report_length_stats()
         # One record per LLM call (start, end, tokens, tier, attempts, Flex
         # capacity waits); wall_s_excl_capacity_wait takes Flex queueing out
         # of latency (calls run one at a time at concurrency 1).
