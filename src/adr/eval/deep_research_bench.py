@@ -17,6 +17,7 @@ in the environment wins, and API keys are never taken from the YAML.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from pathlib import Path
@@ -153,6 +154,12 @@ def run_deep_research_bench(
             bench_root, model_name, query_file, language, workers, skip_cleaning, env, timeout_s,
             run_dir=run_dir,
         )
+        # The scores must come from this run's reports only.
+        staged = {str(json.loads(line).get("id")) for line in dest.read_text(encoding="utf-8").splitlines() if line.strip()}
+        scored = set((result["race"].get("per_query") or {}).keys())
+        if result["race"].get("scores") and scored and scored != staged:
+            result["race"]["error"] = f"RACE scored ids {sorted(scored)}, staged {sorted(staged)}"
+            result["race"]["scores"] = {}
     if run_fact:
         result["fact"] = _fact(bench_root, model_name, dest, query_file, workers, env, timeout_s)
 
@@ -183,9 +190,14 @@ def _race(
     # RACE appends to raw_results.jsonl and skips ids it already scored, so a
     # stale file from an earlier run of the same model name would silently
     # reuse old scores. Start clean; the per-run copy below keeps history.
-    stale = out_dir / "raw_results.jsonl"
-    if stale.exists():
-        stale.unlink()
+    for name in ("raw_results.jsonl", "race_result.txt"):  # race_result.txt survives a RACE that scored nothing
+        (out_dir / name).unlink(missing_ok=True)
+    # Cleaning also skips ids already in cleaned_data/<model>.jsonl, and RACE then
+    # scores every article in that file: a report of another run with the same
+    # task id would be scored instead of this one, and averaged with the rest.
+    cleaned = bench_root / "data" / "test_data" / "cleaned_data"
+    for name in (f"{model_name}.jsonl", f"{model_name}.clean_failures.jsonl"):
+        (cleaned / name).unlink(missing_ok=True)
     args: list[Any] = [
         bench_root / "deepresearch_bench_race.py",
         model_name,
@@ -277,6 +289,10 @@ def _fact(
 
     out_dir = bench_root / "results" / "fact" / model_name
     out_dir.mkdir(parents=True, exist_ok=True)
+    # Every FACT stage resumes from its output file and skips ids already in it,
+    # so outputs left by another run with the same task id would be reused.
+    for stale in [*out_dir.glob("*.jsonl"), out_dir / "fact_result.txt"]:
+        stale.unlink(missing_ok=True)
     stages: list[tuple[str, list[Any]]] = [
         (
             "extract",

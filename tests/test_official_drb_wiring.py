@@ -219,3 +219,27 @@ def test_judge_backend_from_yaml_selects_the_key_to_check(fake_bench: Path, tmp_
     )
     assert result["official"] is False
     assert "OPENAI_API_KEY" in result["reason"] and "LLM_BACKEND=openai" in result["reason"]
+
+
+def test_stale_cached_reports_of_other_runs_are_not_scored(fake_bench: Path, tmp_path: Path, monkeypatch):
+    # Upstream cleaning and every FACT stage skip task ids already in their output
+    # files, and RACE scores every cleaned article. Outputs left by another run
+    # (same model name, other task ids) must be cleared, and scores covering other
+    # ids than the staged report must be rejected.
+    monkeypatch.setenv("OPENROUTER_API_KEY", "mock-key")
+    monkeypatch.delenv("JINA_API_KEY", raising=False)
+    cleaned = fake_bench / "data" / "test_data" / "cleaned_data"
+    cleaned.mkdir(parents=True)
+    (cleaned / "pilot.jsonl").write_text(json.dumps({"id": 61, "article": "old"}) + "\n")
+    stub = (fake_bench / "deepresearch_bench_race.py").read_text()
+    # A RACE that also scored a cached id 61 next to the staged 51.
+    (fake_bench / "deepresearch_bench_race.py").write_text(stub + (
+        "\n(out / 'raw_results.jsonl').write_text("
+        "json.dumps({'id': 51, 'overall_score': 0.5}) + '\\n' + json.dumps({'id': 61, 'overall_score': 0.4}) + '\\n')\n"))
+
+    result = run_deep_research_bench(
+        [_traj()], run_dir=tmp_path / "run", model_name="pilot", third_party_dir=fake_bench, language="en", workers=1)
+
+    assert not (cleaned / "pilot.jsonl").exists()
+    assert result["race"]["scores"] == {}
+    assert "61" in result["race"]["error"]
