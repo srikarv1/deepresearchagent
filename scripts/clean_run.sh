@@ -30,6 +30,7 @@
 #   ROOT                     default runs/clean_drg
 #   SKIP_LEARNED=1           drop bc/dpo if the vLLM server is not reachable
 #   DRYRUN=1                 print the runs it would start, spend nothing
+#   CONTEXT_BUDGET           tokens of evidence a pruning method may keep (default 50000, the config's value)
 # Credentials as in scripts/sol_budget.sh (Sol, DEEPRESEARCHGYM_API_KEY,
 # GR_ORCH_LLM_BASE_URL for bc/dpo) and scripts/sol_budget_judge.sh (judge).
 set -euo pipefail
@@ -104,7 +105,11 @@ run_arm() {
   local out=$1 arm=$2 budget=$3 force=$4 ids=$5 policy=$2
   local extra=(--env "GR_RESEARCH_BUDGET=$budget" --env "GR_BUDGET_OUTPUT_WEIGHT=5"
     --env "GR_BUDGET_FORCE_FULL=$force" --env "GR_REPORT_WORDS=3000" --env "GR_REPORT_REWRITE=0"
-    --env "GR_MAX_CONTEXT_WORDS=0" --env "GR_WRITER_MAX_INPUT_TOKENS=$WRITER_MAX_INPUT_TOKENS")
+    --env "GR_MAX_CONTEXT_WORDS=0" --env "GR_WRITER_MAX_INPUT_TOKENS=$WRITER_MAX_INPUT_TOKENS"
+    # The agent config sets a 1,500-word per-page cut; the environment wins, so turn it off here.
+    --env "GR_FINAL_ITEM_MAX_WORDS=0"
+    # How much evidence a pruning method may keep (no pruning keeps everything).
+    --env "GR_CONTEXT_BUDGET_TOKENS=${CONTEXT_BUDGET:-50000}")
   case $arm in
     bc|dpo) policy=learned
       extra+=(--env "GR_ORCH_LLM_BASE_URL=${GR_ORCH_LLM_BASE_URL:-}" --env "GR_ORCH_LLM_MODEL=pilot-$arm-teacher"
