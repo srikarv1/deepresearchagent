@@ -134,6 +134,29 @@ async def _retry_parse(**kwargs):\
 }
 _patch_gym_judges
 
+# Patch the DeepResearch Bench judge client (patches/deep_research_bench_api.patch):
+# retries with backoff on dropped connections / 429 / 5xx, judge calls pinned to
+# TLS 1.2 (large TLS 1.3 bodies are cut off on some networks), Jina reader with
+# no key (JINA_READER=public), and DRB_USAGE_LOG token counts. Idempotent.
+_patch_drb_api() {
+  local drb="$DEST/deep_research_bench" patch="$ROOT/patches/deep_research_bench_api.patch"
+  [[ -f "$drb/utils/api.py" && -f "$patch" ]] || return 0
+  grep -q "RETRY_PATCH" "$drb/utils/api.py" && return 0
+  # A checkout whose only local edits are lines the patch also adds (e.g. the
+  # DRB_USAGE_LOG block) is reset to upstream first, then patched.
+  if ! (cd "$drb" && patch -p1 --dry-run -s < "$patch" >/dev/null 2>&1) && [ -d "$drb/.git" ] \
+     && (cd "$drb" && git diff -U0 -- utils/api.py | grep '^+[^+]' | sed 's/^+//' \
+         | while IFS= read -r l; do grep -qF -- "$l" "$patch" || exit 1; done); then
+    git -C "$drb" checkout -- utils/api.py
+  fi
+  if (cd "$drb" && patch -p1 --dry-run -s < "$patch" >/dev/null 2>&1); then
+    (cd "$drb" && patch -p1 -s < "$patch") && echo "PATCHED  DeepResearch Bench utils/api.py (retries, TLS 1.2, keyless Jina)"
+  else
+    echo "WARN     $drb/utils/api.py has local changes; apply $patch by hand" >&2
+  fi
+}
+_patch_drb_api
+
 # Agent under test, not a judge. Marker is the fork's trajectory logger so a
 # plain upstream checkout is not mistaken for the instrumented one.
 link_or_clone "$DEST/gpt-researcher" "gpt_researcher/utils/trajectory_logger.py" "$GR_REPO_URL" \

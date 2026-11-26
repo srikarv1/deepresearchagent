@@ -1,0 +1,96 @@
+--- a/utils/api.py
++++ b/utils/api.py
+@@ -151,14 +151,37 @@
+ 
+     def _post(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+         url = f"{self.base_url}/chat/completions"
+-        resp = requests.post(url, headers=self._headers(), json=payload,
+-                             timeout=HTTP_TIMEOUT_S)
++        # RETRY_PATCH : retry dropped connections, 429 and 5xx with backoff.
++        import time as _t
++        for _attempt in range(8):
++            try:
++                resp = _JUDGE_SESSION.post(url, headers=self._headers(), json=payload,
++                                           timeout=HTTP_TIMEOUT_S)
++            except (requests.exceptions.SSLError, requests.exceptions.ConnectionError,
++                    requests.exceptions.Timeout):
++                if _attempt == 7:
++                    raise
++                _t.sleep(min(60, 5 * 2 ** _attempt))
++                continue
++            if resp.status_code in (429, 500, 502, 503, 504) and _attempt < 7:
++                _t.sleep(min(60, 5 * 2 ** _attempt))
++                continue
++            break
+         if resp.status_code != 200:
+             raise Exception(
+                 f"{LLM_BACKEND} chat/completions {resp.status_code}: "
+                 f"{resp.text[:500]}"
+             )
+-        return resp.json()
++        data = resp.json()
++        usage_log = os.environ.get("DRB_USAGE_LOG")
++        if usage_log:  # token counts only, for cost caps; never the request or key
++            import json as _json
++            u = data.get("usage") or {}
++            with open(usage_log, "a") as f:
++                f.write(_json.dumps({"model": payload.get("model"),
++                                     "in": u.get("prompt_tokens", 0),
++                                     "out": u.get("completion_tokens", 0)}) + "\n")
++        return data
+ 
+     def generate(
+         self,
+@@ -203,26 +226,45 @@
+     client = AIClient(model=FACT_Model)
+     return client.generate(user_prompt, stage="fact")
+ 
++
++# TLS12_PATCH : on some networks large TLS 1.3 request bodies are
++# cut off (SSL UNEXPECTED_EOF); pin judge calls to TLS 1.2. Request content is unchanged.
++import ssl as _ssl
++from requests.adapters import HTTPAdapter as _HTTPAdapter
++class _TLS12Adapter(_HTTPAdapter):
++    def init_poolmanager(self, *a, **k):
++        ctx = _ssl.create_default_context()
++        ctx.maximum_version = _ssl.TLSVersion.TLSv1_2
++        k["ssl_context"] = ctx
++        return super().init_poolmanager(*a, **k)
++_JUDGE_SESSION = requests.Session()
++_JUDGE_SESSION.mount("https://", _TLS12Adapter())
+ 
+ # ── Jina scraping (unchanged from upstream) ──────────────────────
+ class WebScrapingJinaTool:
+     def __init__(self, api_key: Optional[str] = None):
+-        self.api_key = api_key or os.environ.get("JINA_API_KEY")
+-        if not self.api_key:
+-            raise ValueError(
+-                "Jina API key not provided! Please set JINA_API_KEY environment variable."
+-            )
++        # PUBLIC_JINA_PATCH : with no key, call the
++        # public r.jina.ai reader without an Authorization header.
++        self.api_key = api_key or os.environ.get("JINA_API_KEY") or ""
+ 
+     def __call__(self, url: str) -> Dict[str, Any]:
+         try:
+             jina_url = f'https://r.jina.ai/{url}'
+             headers = {
+                 "Accept": "application/json",
+-                'Authorization': self.api_key,
+                 'X-Timeout': "60000",
+                 "X-With-Generated-Alt": "true",
+             }
+-            response = requests.get(jina_url, headers=headers)
++            if self.api_key:
++                headers['Authorization'] = self.api_key
++            else:  # image captions (X-With-Generated-Alt) need a key; page text does not
++                headers.pop("X-With-Generated-Alt", None)
++            import time as _t
++            for _attempt in range(6):
++                response = requests.get(jina_url, headers=headers)
++                if response.status_code not in (429, 500, 502, 503, 504):
++                    break
++                _t.sleep(10 * (_attempt + 1))
+ 
+             if response.status_code != 200:
+                 raise Exception(f"Jina AI Reader Failed for {url}: {response.status_code}")
