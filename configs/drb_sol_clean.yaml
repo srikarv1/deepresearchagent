@@ -1,0 +1,40 @@
+# Clean DRB run: bash scripts/clean_run.sh with BENCH=drb (depth 3, research-only budget).
+run_name: drb-sol-clean
+output_dir: runs
+seed: 17
+concurrency: 1
+
+dataset:
+  name: deep_research_bench
+  language: en
+  # Queries come from scripts/sol_budget.sh drb (61-75 by default).
+  limit: null
+  query_ids: []
+
+# Agent parameters (depth/breadth, models, `orchestration:`) are in the agent
+# YAML; GR_ORCHESTRATOR=<policy> selects the orchestration row for one command,
+# scripts/sweep_policies.sh --bench drb runs every row.
+agent:
+  name: gpt_researcher
+  config: configs/agents/gpt_researcher_bench_sol_d3.yaml
+
+llm:
+  provider: mock
+  model: unused
+search:
+  backend: mock
+  top_k: 5
+
+budget:
+  max_steps: 32
+  max_searches: 64
+  max_reads: 128
+  # Recorded only; the stopping rule in the agent config enforces it.
+  max_tokens: 150000
+  max_latency_s: 1200.0
+  max_evidence: 512
+  enforce: false
+
+eval:
+  official_benches: []
+  # official_benches: [deep_research_bench]

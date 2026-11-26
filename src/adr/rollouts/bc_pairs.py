@@ -23,6 +23,8 @@ with cost only as a tie-break (``select_by_quality``).
 
 from __future__ import annotations
 
+import os
+
 import json
 import math
 from collections import defaultdict
@@ -206,6 +208,11 @@ def rows_for_trajectory(
         )
         if snippet_chars is not None:
             kwargs["snippet_chars"] = snippet_chars
+        # Same opt-in as the fork's LearnedPolicy (GR_LEARNED_BUDGET_IN_STATE): the
+        # research budget line, from the checkpoint's recorded budget and spend.
+        if os.environ.get("GR_LEARNED_BUDGET_IN_STATE", "").strip().lower() in ("1", "true", "yes", "on") \
+                and meta.get("research_budget"):
+            kwargs.update(research_budget=meta.get("research_budget"), research_spend=meta.get("research_spend"))
         prompt = serialize.serialize_state(**kwargs)
 
         is_last = idx == len(rounds) - 1
