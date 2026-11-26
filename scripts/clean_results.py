@@ -181,8 +181,18 @@ def check(root: Path, query: str | None) -> int:
                     hard.append(f"{tag}: no report"); continue
                 if f["words_cut"]:
                     hard.append(f"{tag}: {f['words_cut']} collected words were cut before the writer")
-                if f["budget"] and f["over_budget"] is not None and f["over_budget"] > 0.05 * f["budget"]:
-                    hard.append(f"{tag}: research spend {f['over_budget']:.0f} over budget (>5%)")
+                if f["budget"] and f["over_budget"] is not None and f["over_budget"] > 0:
+                    # A paid orchestrator's last checkpoint runs after the budget is reached; that
+                    # spend gathers no evidence. Fail only if search/reading research itself (all
+                    # research minus orchestration) overshoots by >5%, or the total by >12%.
+                    orch = 0 if arm in LOCAL_ORCH else f["orch_in"] + 5 * f["orch_out"]
+                    search_over = (f["research_spend"] or 0) - orch - f["budget"]
+                    if search_over > 0.05 * f["budget"] or f["over_budget"] > 0.12 * f["budget"]:
+                        hard.append(f"{tag}: research {f['over_budget']:.0f} over budget "
+                                    f"({search_over:.0f} excluding orchestration)")
+                    elif f["over_budget"] > 0.05 * f["budget"]:
+                        warn.append(f"{tag}: {f['over_budget']:.0f} over budget, from the orchestrator's last "
+                                    f"checkpoint (search/reading research {search_over + f['budget']:.0f})")
                 if mode == "equal" and f["budget"] and not f["exhausted"]:
                     warn.append(f"{tag}: research finished below the budget (full research < budget; spend differs)")
                 if f["report_in_range"] is False:
