@@ -124,7 +124,17 @@ def run_facts(run: Path, arm: str) -> dict:
         "writer_context_tokens": wc.get("context_tokens"),
         "report_words": rl.get("words_final"), "report_in_range": rl.get("in_range_first"),
         "rounds": fs.get("num_rounds"),
+        "net_retries": _net_retries(run),
     }
+
+
+def _net_retries(run: Path) -> int:
+    """LLM retries after connection errors in this run's log; their waits inflate wall time."""
+    log = run.parent / "logs" / f"{run.name}.log"
+    try:
+        return len(re.findall(r"LLM request failed \(attempt \d+/\d+\)", log.read_text(errors="ignore")))
+    except OSError:
+        return 0
 
 
 def collect(root: Path) -> dict:
@@ -139,6 +149,8 @@ def collect(root: Path) -> dict:
             arm = arm_dir.name
             for run in sorted(arm_dir.glob("*-s0")):
                 qid = run.name.split("-s")[0]
+                if not (traj(run) or {}).get("report"):
+                    continue  # killed or unfinished run: no report, no scores, no costs
                 passes = [run] + [root / f"{d.name}_pass{k}" / arm / run.name for k in (2, 3)]
                 scores = [s for s in (B["scores"](p) for p in passes if p.is_dir()) if s]
                 out.setdefault(key, {}).setdefault(arm, {})[qid] = {"scores": scores, "facts": run_facts(run, arm)}
@@ -218,7 +230,9 @@ def table(root: Path) -> int:
     results, md, csv_rows = {}, [], []
     md.append(f"# Clean {B['name']} results\n")
     md.append("Mean over queries of the per-report mean over judge passes; +/- is the pooled judge SD. "
-              "Delta = paired difference vs no pruning with 95% bootstrap interval. Cost at Flex rates.\n")
+              "Delta = paired difference vs no pruning with 95% bootstrap interval. Cost at Flex rates. "
+              "Research s / Writer s: mean over runs without network retries (retry waits are not agent time). "
+              "Runs without a report (killed) are excluded everywhere.\n")
     for (mode, bk), arms in sorted(data.items(), key=lambda kv: (kv[0][0] != "equal", kv[0][1])):
         md.append(f"\n## {'Equal research spend' if mode == 'equal' else 'Stop decisions respected'}, {bk}K research budget\n")
         heads = [B["labels"].get(m, m) for m in B["head"]] + [f"d{m} vs none [95%]" for m in B["delta"]]
@@ -240,9 +254,14 @@ def table(root: Path) -> int:
                 if arm != "none" and len(shared) >= 3:
                     d = [per_report(scored[q], m) - per_report(base[q], m) for q in shared]
                     row[f"d{m}"], row[f"d{m}_ci"] = st.mean(d), boot(d)
-            for k in ("research_spend", "writer_in", "writer_out", "cost_usd", "research_wall_s", "writer_wall_s",
+            for k in ("research_spend", "writer_in", "writer_out", "cost_usd",
                       "words_cut", "report_words", "research_in", "research_out", "orch_in", "orch_out"):
                 row[k] = mean(e["facts"][k] for e in runs.values())
+            # Latency only from runs without network retries (retry waits are not agent time).
+            clean = [e for e in runs.values() if not e["facts"]["net_retries"]]
+            for k in ("research_wall_s", "writer_wall_s", "wall_s"):
+                row[k] = mean(e["facts"][k] for e in clean)
+            row["n_latency"] = len(clean)
             results[f"{mode}_{bk}k/{arm}"] = row
 
             def f(m):
