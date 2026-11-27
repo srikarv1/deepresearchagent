@@ -164,10 +164,23 @@ run_arm() {
   case $arm in
     bc|dpo) policy=learned
       extra+=(--env "GR_ORCH_LLM_BASE_URL=${GR_ORCH_LLM_BASE_URL:-}" --env "GR_ORCH_LLM_MODEL=pilot-$arm-teacher"
-              --env "GR_ORCH_LLM_API_KEY=${GR_ORCH_LLM_API_KEY:-EMPTY}") ;;
+              --env "GR_ORCH_LLM_API_KEY=${GR_ORCH_LLM_API_KEY:-EMPTY}" --env "GR_ORCH_LLM_PROVIDER=openai") ;;
+    *)
+      # The GPU URL is configured globally for preflight. Baselines must still
+      # use the Sol strategic model and count their paid orchestration calls.
+      extra+=(--env "GR_ORCH_LLM_BASE_URL=" --env "GR_ORCH_LLM_MODEL="
+              --env "GR_ORCH_LLM_API_KEY=" --env "GR_ORCH_LLM_PROVIDER=") ;;
   esac
   mkdir -p "$out/$arm"
-  if [ "${DRYRUN:-0}" = 1 ]; then log "DRYRUN adr rollouts --out $out/$arm --policy $policy --query-ids $ids ${extra[*]}"; return; fi
+  if [ "${DRYRUN:-0}" = 1 ]; then
+    local safe_extra=() value
+    for value in "${extra[@]}"; do
+      case $value in GR_ORCH_LLM_API_KEY=*) value="GR_ORCH_LLM_API_KEY=[redacted]" ;; esac
+      safe_extra+=("$value")
+    done
+    log "DRYRUN adr rollouts --out $out/$arm --policy $policy --query-ids $ids ${safe_extra[*]}"
+    return 0
+  fi
   # Up to 3 attempts: a query whose log is silent for STALL_S (default 1200 s;
   # seen after network drops, when a call never returns) is killed by the
   # watchdog, and the next attempt redoes only the queries without a report.
@@ -177,31 +190,50 @@ run_arm() {
       --n-seeds 1 --seed-base 0 --query-ids "$ids" "${extra[@]}" >>"$out/$arm.log" 2>&1 &
     local p=$!
     ( while kill -0 $p 2>/dev/null; do
-        sleep 60
+        sleep "${STALL_POLL_S:-60}"
         local f; f=$(ls -t "$out/$arm/logs/"*.log 2>/dev/null | head -1)
         [ -n "$f" ] || continue
-        if [ $(( $(date +%s) - $(stat -f %m "$f") )) -gt "${STALL_S:-1200}" ]; then
+        local modified
+        modified=$(.venv/bin/python -c 'import os,sys; print(int(os.stat(sys.argv[1]).st_mtime))' "$f")
+        if [ $(( $(date +%s) - modified )) -gt "${STALL_S:-1200}" ]; then
           echo "$(date +%H:%M:%S) STALL $f silent > ${STALL_S:-1200}s: killing that query" >>"$ROOT/logs/clean_run.log"
-          pkill -TERM -P $p 2>/dev/null; touch "$f"
+          pkill -TERM -P "$p" 2>/dev/null || true
+          touch "$f"
         fi
       done ) &
     local w=$!
-    wait $p
-    kill $w 2>/dev/null
-    local missing=0 q
-    for q in $(echo "$ids" | tr ',' ' '); do
-      [ -f "$out/$arm/$q-s0/trajectories/$q.json" ] || missing=$((missing + 1))
-    done
+    # A failed worker is exactly what this retry loop is meant to recover from.
+    wait "$p" || true
+    pkill -TERM -P "$w" 2>/dev/null || true
+    kill "$w" 2>/dev/null || true
+    wait "$w" 2>/dev/null || true
+    local missing
+    missing=$(.venv/bin/python - "$out/$arm" "$ids" <<'PY'
+import json, sys
+from pathlib import Path
+root, ids = Path(sys.argv[1]), sys.argv[2].split(",")
+missing = 0
+for q in ids:
+    try:
+        data = json.loads((root / f"{q}-s0/trajectories/{q}.json").read_text())
+        complete = bool(data.get("report")) and not data.get("error")
+    except (OSError, ValueError, AttributeError):
+        complete = False
+    missing += not complete
+print(missing)
+PY
+)
     [ $missing -eq 0 ] && { log "done $out/$arm"; return 0; }
     log "WARN $out/$arm: $missing quer(ies) without a report after attempt $attempt"
   done
   log "ERROR $out/$arm: queries still missing after 3 attempts (see $out/$arm.log)"
+  return 1
 }
 
 # All (mode, budget, arm) jobs, JOBS at a time. Methods run in parallel processes
 # (gpt-researcher's trackers are per process), queries within an arm in order.
 generate() {  # generate <root> <query ids> <budgets>
-  local root=$1 ids=$2 budgets=$3 todo=()
+  local root=$1 ids=$2 budgets=$3 todo=() pids=() pid failed=0
   for b in $budgets; do for a in $ARMS; do todo+=("$root/equal_$((b/1000))k|$a|$b|1"); done; done
   for a in $ARMS; do echo " $STOPPERS " | grep -q " $a " && todo+=("$root/stop_$((top_budget/1000))k|$a|$top_budget|0"); done
   for j in "${todo[@]}"; do
@@ -209,8 +241,12 @@ generate() {  # generate <root> <query ids> <budgets>
     while [ "$(jobs -rp | wc -l)" -ge "$JOBS" ]; do sleep 5; done
     log "start $out/$arm (budget $b, force_full $force)"
     run_arm "$out" "$arm" "$b" "$force" "$ids" &
+    pids+=("$!")
   done
-  wait
+  for pid in "${pids[@]}"; do
+    if ! wait "$pid"; then failed=1; fi
+  done
+  return "$failed"
 }
 
 judge_all() {  # judge_all <root>
@@ -241,8 +277,15 @@ tune() {
   [ -f "$ROOT/thresholds.env" ] && { log "thresholds: $(tr '\n' ' ' < "$ROOT/thresholds.env")(delete $ROOT/thresholds.env to retune)"; return 0; }
   echo " $ARMS " | grep -q " prompted_scores " || return 0
   local t="$ROOT/tune/equal_$((top_budget/1000))k"
-  for a in prompted prompted_scores; do run_arm "$t" "$a" "$top_budget" 1 "$DEV_QUERIES" & done
-  wait
+  local pids=() pid failed=0
+  for a in prompted prompted_scores; do
+    run_arm "$t" "$a" "$top_budget" 1 "$DEV_QUERIES" &
+    pids+=("$!")
+  done
+  for pid in "${pids[@]}"; do
+    if ! wait "$pid"; then failed=1; fi
+  done
+  [ "$failed" -eq 0 ] || return 1
   [ "${DRYRUN:-0}" = 1 ] && return 0
   .venv/bin/python scripts/clean_results.py tune "$t" --out "$ROOT/thresholds.env" | tee -a "$ROOT/logs/clean_run.log"
 }
