@@ -181,17 +181,29 @@ judge metrics are reused. `--source` selects an existing checkout to read;
 project interpreter. Generation settings and question IDs are frozen; counts
 can increase, but incompatible source/settings require another cohort.
 
-The runner compares all six methods at 100K/150K/200K research allowances,
-calibrates scored prompting on separate dev questions, and runs three judge
-passes. It reports every quality metric with SD, research/orchestrator/writer
-input/output, cost estimates, timing, confidence intervals, and per-report
-budget/length/depth/noise diagnostics. Failed judge metrics retry individually.
-The 100K-evidence follow-up stays separate from the main 50K-target cohort.
+The main comparison pairs the same queries across no pruning, extractive,
+direct prompted, scored prompted, BC and DPO at 100K, 150K and 200K.
+Each query gets one shared research allowance across branches. One paid
+gpt-6.1-sol input token uses one unit and one output token uses five. This
+fixed weight is a study convention. Paid prompting counts toward the
+allowance. Local BC/DPO inference and report writing are excluded. Generation
+cost estimates include writing and assume $1/M input and $5/M output.
 
-Shared allowances do not guarantee identical actual spend or stopping before
-level 3. Report length and evidence targets are not common hard caps. Changing
-those generation rules cannot repair completed reports retrospectively. A
-BC/DPO quality win and live-paper integration still require their respective
-evidence/access. Only 47 English DRB questions remain after reserving three for
-calibration. Preflight checks both GPU adapters, credentials, Tavily balance,
-the patched DRB judge and any existing DRB watcher before paid execution.
+In the main comparison, research continues past policy stop requests. A
+separate 200K comparison honors them. In-flight work can overshoot, so report
+realized spend alongside the allowance. The tree has depth 3 and breadth 4
+and may reach level 3. The main evidence target is 50K. The 100K-evidence
+follow-up is reported separately. The writer has a 250K-token input guard
+and targets 3,000 words within 10%. Research and writing times are measured
+separately.
+
+Calibrate the scored prompt on separate dev queries. Compare BC and DPO
+against **both** prompted baselines using paired differences on shared
+queries with three completed judge passes per report. Confidence intervals
+resample queries. The reported SD measures variation across repeated judge
+scores of the same report. The initial cohort has 10 queries per benchmark
+by design. The expansion supports 50 Gym and 47 English Bench evaluation
+queries after reserving three Bench questions for calibration.
+
+Preflight checks both GPU adapters, credentials, Tavily balance, the patched
+DRB judge and any existing DRB watcher before paid execution.

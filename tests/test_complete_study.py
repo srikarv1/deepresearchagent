@@ -260,3 +260,25 @@ def test_reporting_contains_every_metric_and_full_token_split(study, tmp_path):
     assert all(metric in md and metric in tex for metric in ('Clarity', 'Breadth', 'Depth', 'Support', 'KPR', 'Citation'))
     assert all(label in md for label in ('Research in', 'Research out', 'Orch in', 'Orch out', 'Writer in', 'Writer out'))
     assert 'every method spends the full' not in tex
+    assert 'Matched allowance' in tex and 'assumed rates' in tex and '250K input guard' in tex
+
+
+def test_learned_comparison_pairs_both_prompted_baselines(study, tmp_path):
+    root = tmp_path / 'drg'
+    for arm, quality in [('bc', 62), ('dpo', 61), ('prompted', 60), ('prompted_scores', 63)]:
+        for q in ('1', '2', '3', '4'):
+            for suffix in ('', '_pass2', '_pass3'):
+                if arm == 'prompted_scores' and q == '4' and suffix == '_pass3':
+                    continue
+                run = root / f'equal_100k{suffix}' / arm / f'{q}-s0'
+                report(run, q=q, arm=arm)
+                scores(run)
+                path = run / 'metrics/summary.json'
+                data = study.read(path)
+                data['official']['deep_research_gym']['quality']['average_normalized_score'] = quality
+                write_json(path, data)
+    study.offline_reports(tmp_path / 'source', tmp_path, {'queries': {'drg': ['1', '2', '3', '4']}})
+    comparison = (root / 'LEARNED_COMPARISON.md').read_text()
+    for arm, direct, scored in [('bc', '+2.00', '-1.00'), ('dpo', '+1.00', '-2.00')]:
+        assert f'{arm} minus prompted, Overall: {direct} [{direct}, {direct}], n=4' in comparison
+        assert f'{arm} minus prompted_scores, Overall: {scored} [{scored}, {scored}], n=3' in comparison

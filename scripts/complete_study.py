@@ -546,11 +546,11 @@ def offline_reports(source, output, proposed):
                           'length_outliers': sum(not r['length_in_range'] for r in audit),
                           'KPR_sd_at_least_2_7': sum((r['KPR_judge_sd'] or 0) >= 2.7 for r in audit),
                           'reports_reaching_depth_3': sum((r['max_evidence_depth'] or 0) >= 3 for r in audit)}
-        results = read(root / 'results.json', {})
         lines = ['# BC/DPO versus prompted', '', 'Paired differences on the same questions; intervals resample questions. '
                  'Retention/stopping associations do not establish a causal explanation.', '']
         for (mode, budget), arms in sorted(data.items()):
-            for arm, comparator in (('bc', 'prompted'), ('dpo', 'prompted'), ('bc', 'dpo')):
+            for arm, comparator in (('bc', 'prompted'), ('bc', 'prompted_scores'),
+                                    ('dpo', 'prompted'), ('dpo', 'prompted_scores'), ('bc', 'dpo')):
                 common = sorted(set(arms.get(arm, {})) & set(arms.get(comparator, {})))
                 for metric in mod.B['delta']:
                     diffs = [mod.per_report(arms[arm][q], metric) - mod.per_report(arms[comparator][q], metric)

@@ -10,9 +10,8 @@ judge copies <mode>_<budget>k_pass2 / _pass3 written by scripts/sol_budget_judge
 Per report the score is the mean over the judge passes that produced scores
 (a failed pass is skipped, never counted as 0); the judge SD is the SD across
 those passes, pooled over the reports of a row. Differences against no pruning
-are paired per query, with a 95% bootstrap interval. Cost uses gpt-6.1-sol at
-Azure Flex rates ($1 / $5 per million input / output tokens) on every
-model call except a locally served orchestrator (BC / DPO).
+are paired per query, with a 95% bootstrap interval. Generation cost is estimated at $1 / $5 per million input / output tokens
+for paid research, orchestration and writing.
 """
 from __future__ import annotations
 
@@ -25,9 +24,8 @@ import statistics as st
 import sys
 from pathlib import Path
 
-PRICE_IN, PRICE_OUT = 1.0, 5.0  # $ per million tokens, gpt-6.1-sol Azure Flex
+PRICE_IN, PRICE_OUT = 1.0, 5.0  # Assumed dollars per million generation tokens.
 METRICS = ("Overall", "KPR", "KPC", "Citation", "Clarity", "Breadth", "Depth", "Support")
-HEADLINE = ("Overall", "KPR", "KPC", "Citation")
 ARM_ORDER = ("none", "extractive", "prompted", "prompted_scores", "bc", "dpo")
 ARM_NAME = {"none": "No pruning", "extractive": "Extractive", "prompted": "Prompted",
             "prompted_scores": "Prompted (scores)", "bc": "PILOT (BC)", "dpo": "PILOT (DPO)"}
@@ -72,14 +70,14 @@ def drb_scores(run: Path) -> dict | None:
     return row
 
 
-# Per benchmark: score reader, metrics, headline columns, paired-delta metrics, decimals.
+# Per benchmark: score reader, metrics, paired-delta metrics, decimals.
 BENCHES = {
     "drg": {"scores": gym_scores, "name": "DeepResearchGym", "metrics": METRICS,
-            "head": ("Overall", "KPR", "KPC", "Citation"), "delta": ("Overall", "KPR"),
+            "delta": ("Overall", "KPR"),
             "labels": {"KPC": "Contr."}, "nd": {}},
     "drb": {"scores": drb_scores, "name": "DeepResearch Bench",
             "metrics": ("RACE", "Comp.", "Insight", "Instr.", "Read.", "FACT"),
-            "head": ("RACE", "Comp.", "Insight", "Instr.", "Read.", "FACT"), "delta": ("RACE", "FACT"),
+            "delta": ("RACE", "FACT"),
             "labels": {}, "nd": {"RACE": 3, "Comp.": 3, "Insight": 3, "Instr.": 3, "Read.": 3, "FACT": 2}},
 }
 B = BENCHES["drg"]
@@ -244,18 +242,8 @@ def table(root: Path, output: Path | None = None) -> int:
     output = output or root
     output.mkdir(parents=True, exist_ok=True)
     data = collect(root)
-    results, md, csv_rows = {}, [], []
-    md.append(f"# Clean {B['name']} results\n")
-    md.append("Mean over queries of the per-report mean over judge passes; +/- is the pooled judge SD. "
-              "Delta = paired difference vs no pruning with 95% bootstrap interval. Cost at Flex rates. "
-              "Research s / Writer s: mean over runs without network retries (retry waits are not agent time). "
-              "Runs without a report (killed) are excluded everywhere.\n")
+    results, csv_rows = {}, []
     for (mode, bk), arms in sorted(data.items(), key=lambda kv: (kv[0][0] != "equal", kv[0][1])):
-        md.append(f"\n## {'Equal research spend' if mode == 'equal' else 'Stop decisions respected'}, {bk}K research budget\n")
-        heads = [B["labels"].get(m, m) for m in B["head"]] + [f"d{m} vs none [95%]" for m in B["delta"]]
-        md.append("| Method | " + " | ".join(heads) + " | Research spend | Writer in/out | Cost $ | Research s "
-                  "| Writer s | Words cut | Report words | judged |")
-        md.append("|" + "---|" * (len(heads) + 9))
         base = arms.get("none") or (data.get(("equal", bk)) or {}).get("none") or {}
         for arm in [a for a in ARM_ORDER if a in arms] + [a for a in arms if a not in ARM_ORDER]:
             runs = arms[arm]
@@ -282,26 +270,6 @@ def table(root: Path, output: Path | None = None) -> int:
             row["n_latency"] = len(clean)
             results[f"{mode}_{bk}k/{arm}"] = row
 
-            def f(m):
-                v, sd, n = row.get(m), row.get(m + "_judge_sd"), nd(m)
-                return "--" if v is None else f"{v:.{n}f}" + (f" ±{sd:.{n}f}" if sd is not None else "")
-
-            def dl(m):
-                if f"d{m}" not in row:
-                    return "--"
-                lo, hi, n = *row[f"d{m}_ci"], nd(m)
-                return f"{row[f'd{m}']:+.{n}f} [{lo:+.{n}f}, {hi:+.{n}f}]"
-
-            def k(v, scale=1000, nd=0, suffix="K"):
-                return "--" if v is None else f"{v / scale:.{nd}f}{suffix}"
-            cost = "--" if row["cost_usd"] is None else f"{row['cost_usd']:.2f}"
-            md.append(f"| {ARM_NAME.get(arm, arm)} | " + " | ".join([f(m) for m in B["head"]] + [dl(m) for m in B["delta"]])
-                      + f" | {k(row['research_spend'])} "
-                      f"| {k(row['writer_in'])}/{k(row['writer_out'], nd=1)} "
-                      f"| {cost} "
-                      f"| {k(row['research_wall_s'], 1, 0, '')} | {k(row['writer_wall_s'], 1, 0, '')} "
-                      f"| {k(row['words_cut'], 1, 0, '')} | {k(row['report_words'], 1, 0, '')} "
-                      f"| {row['n_scored']}/{row['n_runs']} |")
             for q, e in runs.items():
                 r = {"setting": f"{mode}_{bk}k", "arm": arm, "query": q, "passes": len(e["scores"])}
                 r.update({m: per_report(e, m) for m in B["metrics"]} if e["scores"] else {})
@@ -327,7 +295,7 @@ def full_markdown(results: dict) -> str:
              "± is pooled within-report judge SD; confidence intervals resample queries. "
              "Matched allowances do not imply identical actual spend. Missing scores are not zero.", "",
              "Cost estimates assume $1/M input and $5/M output for the generation model; "
-             "search, embeddings, judging and local GPU costs are excluded. Research spend includes "
+             "cached input uses the same input rate. Search, embeddings, judging and local GPU costs are excluded. Research spend includes "
              "paid orchestration and weights output 5×. Writer tokens are outside that allowance.", ""]
     settings = sorted({k.split('/')[0] for k in results},
                       key=lambda k: (not k.startswith('equal'), int(k.split('_')[1][:-1])))
@@ -374,7 +342,7 @@ def full_markdown(results: dict) -> str:
 
 
 def latex(results: dict) -> str:
-    """Paper-ready table (equal spend, every budget; stop mode at the end) and a
+    """Paper-ready table (matched allowances, every budget; stop mode at the end) and a
     pgfplots figure of Overall and KPR vs budget with 95% intervals. Needs the
     paper's \\sd macro: \\newcommand{\\sd}[1]{{\\scriptsize\\,\\textcolor{gray}{$\\pm$#1}}}."""
     def cell(r, m):
@@ -388,11 +356,13 @@ def latex(results: dict) -> str:
            "\\begin{table*}[t]", "\\centering", "\\small", "\\setlength{\\tabcolsep}{4pt}",
            "\\renewcommand{\\arraystretch}{1.15}",
            f"\\caption{{{B['name']} at research-only budgets"
-           " (\\texttt{gpt-6.1-sol}, depth 3, breadth 4; writer context "
-           "uncapped; target 3{,}000-word reports). Equal: matched research allowances with actual spend reported; stop: stop "
-           "decisions respected. Three gpt-5-mini judge passes per report; grey $\\pm$ is the judge standard deviation. "
-           "Research spend is input + 5$\\times$output tokens of research and paid orchestration; writer input in "
-           "thousands of tokens; cost per report at Azure Flex rates.}",
+           " (\\texttt{gpt-6.1-sol}, depth 3, breadth 4). Each method receives the same allowance per query. "
+           "Spend (K) is realized research input plus five times output, including paid orchestration. "
+           "In-flight calls can exceed the allowance. Only the stop condition honors policy stop requests. "
+           "Writing has a separate 250K input guard and a 3{,}000-word target ($\\pm$10\\%). "
+           "Scores average the available judge passes per report (three planned), then queries. "
+           "Grey $\\pm$ shows within-report judge SD. Estimated generation cost includes writing "
+           "at assumed rates of \\$1/M input and \\$5/M output.}",
            f"\\label{{tab:clean-{BENCH_KEY}}}",
            "\\begin{adjustbox}{max width=\\linewidth}",
            "\\begin{tabular}{l" + "c" * (len(B["metrics"]) + 2) + "}", "\\toprule",
@@ -401,7 +371,7 @@ def latex(results: dict) -> str:
     ncol = len(B["metrics"]) + 3
     for st_ in settings:
         mode, bk = st_.split("_")
-        out += ["\\midrule", f"\\multicolumn{{{ncol}}}{{l}}{{\\textit{{{'Equal spend' if mode == 'equal' else 'Stop respected'}, {bk[:-1]}K}}}} \\\\"]
+        out += ["\\midrule", f"\\multicolumn{{{ncol}}}{{l}}{{\\textit{{{'Matched allowance' if mode == 'equal' else 'Stop respected'}, {bk[:-1]}K}}}} \\\\"]
         for arm in ARM_ORDER:
             r = results.get(f"{st_}/{arm}")
             if not r:
