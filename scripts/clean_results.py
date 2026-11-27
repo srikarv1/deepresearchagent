@@ -163,7 +163,8 @@ def collect(root: Path) -> dict:
             arm = arm_dir.name
             for run in sorted(arm_dir.glob("*-s0")):
                 qid = run.name.split("-s")[0]
-                if not (traj(run) or {}).get("report"):
+                trajectory = traj(run) or {}
+                if not trajectory.get("report") or trajectory.get("error"):
                     continue  # killed or unfinished run: no report, no scores, no costs
                 passes = [run] + [root / f"{d.name}_pass{k}" / arm / run.name for k in (2, 3)]
                 scores = [s for s in (B["scores"](p) for p in passes if p.is_dir()) if s]
@@ -239,7 +240,9 @@ def check(root: Path, query: str | None) -> int:
 
 
 # ----------------------------------------------------------------- table
-def table(root: Path) -> int:
+def table(root: Path, output: Path | None = None) -> int:
+    output = output or root
+    output.mkdir(parents=True, exist_ok=True)
     data = collect(root)
     results, md, csv_rows = {}, [], []
     md.append(f"# Clean {B['name']} results\n")
@@ -258,6 +261,7 @@ def table(root: Path) -> int:
             runs = arms[arm]
             scored = {q: e for q, e in runs.items() if e["scores"]}
             row = {"n_runs": len(runs), "n_scored": len(scored)}
+            row["n_three_passes"] = sum(len(e["scores"]) == 3 for e in runs.values())
             for m in B["metrics"]:
                 vals = [v for v in (per_report(e, m) for e in scored.values()) if v is not None]
                 row[m] = mean(vals)
@@ -303,17 +307,70 @@ def table(root: Path) -> int:
                 r.update({m: per_report(e, m) for m in B["metrics"]} if e["scores"] else {})
                 r.update(e["facts"])
                 csv_rows.append(r)
-    (root / "RESULTS.md").write_text("\n".join(md) + "\n")
-    (root / "results.tex").write_text(latex(results))
-    (root / "results.json").write_text(json.dumps(results, indent=1, default=str))
+    (output / "RESULTS.md").write_text(full_markdown(results))
+    (output / "results.tex").write_text(latex(results))
+    (output / "results.json").write_text(json.dumps(results, indent=1, default=str))
     if csv_rows:
         keys = sorted({k for r in csv_rows for k in r}, key=lambda k: (k not in ("setting", "arm", "query"), k))
-        with open(root / "per_query.csv", "w", newline="") as fh:
+        with open(output / "per_query.csv", "w", newline="") as fh:
             w = csv.DictWriter(fh, fieldnames=keys)
             w.writeheader()
             w.writerows(csv_rows)
-    print(f"wrote {root / 'RESULTS.md'}, results.tex, results.json, per_query.csv ({len(csv_rows)} runs)")
+    print(f"wrote {output / 'RESULTS.md'}, results.tex, results.json, per_query.csv ({len(csv_rows)} runs)")
     return 0
+
+
+def full_markdown(results: dict) -> str:
+    """Keep all quality metrics and the complete token split in readable panels."""
+    lines = [f"# {B['name']}: matched research allowances", "",
+             "Each report is averaged across its available judge passes, then across queries. "
+             "± is pooled within-report judge SD; confidence intervals resample queries. "
+             "Matched allowances do not imply identical actual spend. Missing scores are not zero.", "",
+             "Cost estimates assume $1/M input and $5/M output for the generation model; "
+             "search, embeddings, judging and local GPU costs are excluded. Research spend includes "
+             "paid orchestration and weights output 5×. Writer tokens are outside that allowance.", ""]
+    settings = sorted({k.split('/')[0] for k in results},
+                      key=lambda k: (not k.startswith('equal'), int(k.split('_')[1][:-1])))
+    def number(v, scale=1, digits=1):
+        return "—" if v is None else f"{v / scale:.{digits}f}"
+    def grid(headers, rows):
+        return ["| " + " | ".join(headers) + " |", "|" + "---|" * len(headers),
+                *["| " + " | ".join(row) + " |" for row in rows], ""]
+    for setting in settings:
+        lines += [f"## {setting}: quality", ""]
+        selected = [(a, results[f"{setting}/{a}"]) for a in ARM_ORDER if f"{setting}/{a}" in results]
+        quality, tokens, deltas = [], [], []
+        for arm, r in selected:
+            cells = []
+            for metric in B['metrics']:
+                value, sd = r.get(metric), r.get(metric + '_judge_sd')
+                cells.append(number(value, digits=nd(metric)) +
+                             (f" ±{sd:.{nd(metric)}f}" if sd is not None else ""))
+            quality.append([ARM_NAME[arm], *cells, f"{r['n_scored']}/{r['n_runs']}",
+                            str(r.get('n_three_passes', 0))])
+            tokens.append([ARM_NAME[arm], number(r.get('research_spend'), 1000),
+                           *[number(r.get(k), 1000) for k in
+                             ('research_in', 'research_out', 'orch_in', 'orch_out', 'writer_in', 'writer_out')],
+                           number(r.get('cost_usd'), digits=3),
+                           number(r.get('research_wall_s')), number(r.get('writer_wall_s')),
+                           str(r.get('n_latency', 0)), number(r.get('report_words'), digits=0)])
+            for metric in B['delta']:
+                ci = r.get(f'd{metric}_ci')
+                if ci:
+                    deltas.append([ARM_NAME[arm], metric, number(r.get(f'd{metric}')),
+                                   f"[{ci[0]:+.2f}, {ci[1]:+.2f}]"])
+        lines += grid(['Method', *[B['labels'].get(m, m) for m in B['metrics']],
+                       'Scored/reports', '3-pass reports'], quality)
+        lines += [f"### {setting}: tokens and timing", "",
+                  "All token columns are thousands. Research input/output exclude orchestration, "
+                  "which is shown separately. Timing means exclude logged network-retry runs; "
+                  "they still include search waiting and are not a latency cap.", ""]
+        lines += grid(['Method', 'Weighted spend', 'Research in', 'Research out', 'Orch in',
+                       'Orch out', 'Writer in', 'Writer out', 'Cost $', 'Research s',
+                       'Writer s', 'Timing n', 'Report words'], tokens)
+        if deltas:
+            lines += grid(['Method', 'Metric vs no pruning', 'Difference', '95% paired CI'], deltas)
+    return '\n'.join(lines) + '\n'
 
 
 def latex(results: dict) -> str:
@@ -332,16 +389,16 @@ def latex(results: dict) -> str:
            "\\renewcommand{\\arraystretch}{1.15}",
            f"\\caption{{{B['name']} at research-only budgets"
            " (\\texttt{gpt-6.1-sol}, depth 3, breadth 4; writer context "
-           "uncapped; 3{,}000-word reports). Equal spend: every method spends the full research budget; stop: stop "
+           "uncapped; target 3{,}000-word reports). Equal: matched research allowances with actual spend reported; stop: stop "
            "decisions respected. Three gpt-5-mini judge passes per report; grey $\\pm$ is the judge standard deviation. "
            "Research spend is input + 5$\\times$output tokens of research and paid orchestration; writer input in "
            "thousands of tokens; cost per report at Azure Flex rates.}",
            f"\\label{{tab:clean-{BENCH_KEY}}}",
            "\\begin{adjustbox}{max width=\\linewidth}",
-           "\\begin{tabular}{l" + "c" * (len(B["head"]) + 3) + "}", "\\toprule",
-           "Approach & " + " & ".join(B["labels"].get(m, m) for m in B["head"])
-           + " & Research spend (K) & Writer input (K) & Cost (\\$) \\\\"]
-    ncol = len(B["head"]) + 4
+           "\\begin{tabular}{l" + "c" * (len(B["metrics"]) + 2) + "}", "\\toprule",
+           "Approach & " + " & ".join(B["labels"].get(m, m) for m in B["metrics"])
+           + " & Spend (K) & Cost (\\$) \\\\"]
+    ncol = len(B["metrics"]) + 3
     for st_ in settings:
         mode, bk = st_.split("_")
         out += ["\\midrule", f"\\multicolumn{{{ncol}}}{{l}}{{\\textit{{{'Equal spend' if mode == 'equal' else 'Stop respected'}, {bk[:-1]}K}}}} \\\\"]
@@ -351,26 +408,60 @@ def latex(results: dict) -> str:
                 continue
             cost = "--" if r.get("cost_usd") is None else f"{r['cost_usd']:.2f}"
             out.append(ARM_NAME[arm].replace("PILOT", chr(92) + "method{}") + " & "
-                       + " & ".join(cell(r, m) for m in B["head"])
-                       + f" & {num(r.get('research_spend'))} & {num(r.get('writer_in'))} & {cost} \\\\")
+                       + " & ".join(cell(r, m) for m in B["metrics"])
+                       + f" & {num(r.get('research_spend'))} & {cost} \\\\")
     out += ["\\bottomrule", "\\end{tabular}", "\\end{adjustbox}", "\\end{table*}", ""]
+    panels = [
+        ("Tokens (K); research columns exclude the separately reported orchestrator",
+         [("research_spend", "Spend", 1000), ("research_in", "R in", 1000),
+          ("research_out", "R out", 1000), ("orch_in", "O in", 1000),
+          ("orch_out", "O out", 1000), ("writer_in", "W in", 1000),
+          ("writer_out", "W out", 1000), ("cost_usd", "Cost (\\$)", 1)]),
+        ("Timing and completeness (timing excludes logged network-retry runs)",
+         [("research_wall_s", "Research s", 1), ("writer_wall_s", "Writer s", 1),
+          ("report_words", "Words", 1), ("n_runs", "Reports", 1),
+          ("n_three_passes", "3-pass", 1), ("n_latency", "Timing n", 1)])]
+    for title, columns in panels:
+        count = len(columns) + 1
+        out += ["\\begin{table*}[t]", "\\centering", "\\small",
+                "\\caption{" + B['name'] + ": " + title + ". Same runs as Table~\\ref{tab:clean-" + BENCH_KEY + "}.}",
+                "\\begin{adjustbox}{max width=\\linewidth}",
+                "\\begin{tabular}{l" + "c" * len(columns) + "}", "\\toprule",
+                "Approach & " + " & ".join(c[1] for c in columns) + " \\\\"]
+        for setting in settings:
+            out += ["\\midrule", f"\\multicolumn{{{count}}}{{l}}{{\\textit{{{setting.replace('_', ' ')}}}}} \\\\"]
+            for arm in ARM_ORDER:
+                row = results.get(f"{setting}/{arm}")
+                if row:
+                    cells = [num(row.get(key), scale, 3 if key == 'cost_usd' else 1)
+                             for key, _, scale in columns]
+                    out.append(ARM_NAME[arm].replace("PILOT", chr(92) + "method{}") + " & "
+                               + " & ".join(cells) + " \\\\")
+        out += ["\\bottomrule", "\\end{tabular}", "\\end{adjustbox}", "\\end{table*}", ""]
     # Figure: Overall / KPR vs research budget, equal spend, 95% intervals of the query mean.
     budgets = sorted({int(k.split("/")[0].split("_")[1][:-1]) for k in results if k.startswith("equal")})
+    if budgets:
+        out += ["\\begin{figure*}[t]", "\\centering"]
     for m in B["delta"]:
         out += [f"% {m} vs research budget (needs \\usepackage{{pgfplots}})", "\\begin{tikzpicture}",
-                f"\\begin{{axis}}[width=0.48\\linewidth, height=4.2cm, xlabel={{Research budget (K)}}, ylabel={{{m}}}, "
-                f"xtick={{{','.join(map(str, budgets))}}}, legend style={{font=\\tiny, at={{(1.02,1)}}, anchor=north west}}]"]
+                f"\\begin{{axis}}[width=0.46\\textwidth, height=4.2cm, xlabel={{Research budget (K)}}, ylabel={{{m}}}, "
+                f"xtick={{{','.join(map(str, budgets))}}}, legend style={{font=\\tiny, at={{(0.5,-0.45)}}, anchor=north, legend columns=2}}]"]
         for arm in ARM_ORDER:
             pts = []
             for b in budgets:
                 r = results.get(f"equal_{b}k/{arm}")
                 if r and r.get(m) is not None and r.get(m + "_ci"):
                     lo, hi = r[m + "_ci"]
-                    pts.append(f"({b},{r[m]:.{nd(m) + 1}f}) +- (0,{max(hi - r[m], r[m] - lo):.{nd(m) + 1}f})")
+                    pts.append(f"({b},{r[m]:.{nd(m) + 1}f}) += (0,{max(0, hi - r[m]):.{nd(m) + 1}f}) "
+                               f"-= (0,{max(0, r[m] - lo):.{nd(m) + 1}f})")
             if pts:
                 out += ["\\addplot+[error bars/.cd, y dir=both, y explicit] coordinates {" + " ".join(pts) + "};",
                         f"\\addlegendentry{{{ARM_NAME[arm]}}}"]
-        out += ["\\end{axis}", "\\end{tikzpicture}", ""]
+        out += ["\\end{axis}", "\\end{tikzpicture}", "\\hfill", ""]
+    if budgets:
+        out += ["\\caption{Quality versus matched research allowances. Error bars show asymmetric 95\\% "
+                "query-bootstrap confidence intervals; they are distinct from within-report judge SD.}",
+                "\\end{figure*}", ""]
     return "\n".join(out)
 
 
@@ -441,11 +532,12 @@ def main() -> int:
     ap.add_argument("--bench", choices=tuple(BENCHES), default="drg")
     ap.add_argument("--query")
     ap.add_argument("--out", type=Path, help="tune: thresholds file to write")
+    ap.add_argument("--output-dir", type=Path, help="table: write reports here without changing source runs")
     a = ap.parse_args()
     B, BENCH_KEY = BENCHES[a.bench], a.bench
     if a.mode == "tune":
         return tune(a.root, a.out or a.root / "thresholds.env")
-    return check(a.root, a.query) if a.mode == "check" else table(a.root)
+    return check(a.root, a.query) if a.mode == "check" else table(a.root, a.output_dir)
 
 
 if __name__ == "__main__":

@@ -165,3 +165,33 @@ pytest
 ```
 
 The suite runs offline. `tests/test_official_gym_wiring.py` drives the real upstream Gym scripts against the mock judge and asserts an exactly predictable aggregate, so it fails if the invocation contract or the scoring math drifts. `tests/test_official_drb_wiring.py` does the same for RACE with a stub, without touching your checkout. Tests that need a judge repo skip themselves when it is absent.
+
+## Complete the clean research-budget study
+
+```bash
+bash scripts/finish_study.sh                              # offline plan/reporting only
+bash scripts/finish_study.sh --preflight                  # read-only readiness checks
+bash scripts/finish_study.sh --execute                    # fill missing cells, 10 queries/benchmark
+bash scripts/finish_study.sh --execute --drg-count 50 --drb-count 47
+```
+
+Run again with the same arguments to resume. Compatible completed reports and
+judge metrics are reused. `--source` selects an existing checkout to read;
+`--output` selects a separate results directory. `STUDY_PYTHON` overrides the
+project interpreter. Generation settings and question IDs are frozen; counts
+can increase, but incompatible source/settings require another cohort.
+
+The runner compares all six methods at 100K/150K/200K research allowances,
+calibrates scored prompting on separate dev questions, and runs three judge
+passes. It reports every quality metric with SD, research/orchestrator/writer
+input/output, cost estimates, timing, confidence intervals, and per-report
+budget/length/depth/noise diagnostics. Failed judge metrics retry individually.
+The 100K-evidence follow-up stays separate from the main 50K-target cohort.
+
+Shared allowances do not guarantee identical actual spend or stopping before
+level 3. Report length and evidence targets are not common hard caps. Changing
+those generation rules cannot repair completed reports retrospectively. A
+BC/DPO quality win and live-paper integration still require their respective
+evidence/access. Only 47 English DRB questions remain after reserving three for
+calibration. Preflight checks both GPU adapters, credentials, Tavily balance,
+the patched DRB judge and any existing DRB watcher before paid execution.
