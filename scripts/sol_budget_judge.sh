@@ -91,7 +91,15 @@ if [ "$bench" = drb ]; then
   mkdir "$lock" 2>/dev/null || { echo "another drb judging is running ($lock); wait for it or remove the lock" >&2; exit 1; }
   trap 'rmdir "$lock" 2>/dev/null' EXIT
 fi
+# Watchdog: a judging whose connection dies silently can hang forever (seen
+# after a network drop; perl's alarm did not stop it), so a timer kills the
+# judge and everything it started once JUDGE_TIMEOUT_S passes.
 echo "$todo" | grep . | xargs -P "$jobs" -n 1 sh -c '
-  perl -e "alarm shift; exec @ARGV" "$JUDGE_TIMEOUT_S" .venv/bin/adr evaluate "$1" --official "$BUDGET_OFFICIAL" -c "$BUDGET_CONFIG" > "$1/judge.log" 2>&1 \
-    && echo "$(date +%H:%M) judged $1" || echo "$(date +%H:%M) FAILED or timed out $1 (see $1/judge.log)"' _ || true
+  .venv/bin/adr evaluate "$1" --official "$BUDGET_OFFICIAL" -c "$BUDGET_CONFIG" > "$1/judge.log" 2>&1 &
+  p=$!
+  ( sleep "$JUDGE_TIMEOUT_S"; pkill -TERM -P $p 2>/dev/null; kill -TERM $p 2>/dev/null; sleep 10; pkill -KILL -P $p 2>/dev/null; kill -KILL $p 2>/dev/null ) &
+  w=$!
+  wait $p; rc=$?
+  kill $w 2>/dev/null
+  [ $rc -eq 0 ] && echo "$(date +%H:%M) judged $1" || echo "$(date +%H:%M) FAILED or timed out $1 (see $1/judge.log)"' _ || true
 echo "$(date +%H:%M) done; run this again to retry anything still missing, then scripts/budget_table.py $bench"
