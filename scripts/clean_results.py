@@ -90,6 +90,20 @@ def nd(m: str) -> int:
     return B["nd"].get(m, 1)
 
 
+_REF_HEADING = re.compile(r"^\s*#{1,6}\s*(references|sources|bibliography|works cited)\s*:?\s*$", re.I | re.M)
+
+
+def _body_words(report) -> int | None:
+    """Words before the reference list. Only a heading that is exactly References /
+    Sources / Bibliography counts (the fork's counter also stops at headings such as
+    "Sources and Analytical Approach"); the last such heading is used."""
+    text = report.get("article", "") if isinstance(report, dict) else (report or "")
+    if not text:
+        return None
+    heads = list(_REF_HEADING.finditer(text))
+    return len((text[: heads[-1].start()] if heads else text).split())
+
+
 def run_facts(run: Path, arm: str) -> dict:
     """Tokens, cost, latency, writer-context cuts and report length of one run."""
     t = traj(run) or {}
@@ -122,7 +136,7 @@ def run_facts(run: Path, arm: str) -> dict:
         "wall_s": fs.get("wall_s") or lat.get("wall_s"), "capacity_wait_s": lat.get("capacity_wait_s"),
         "words_collected": wc.get("words_collected"), "words_cut": cuts,
         "writer_context_tokens": wc.get("context_tokens"),
-        "report_words": rl.get("words_final"), "report_in_range": rl.get("in_range_first"),
+        "report_words": _body_words(t.get("report")), "report_in_range": rl.get("in_range_first"),
         "rounds": fs.get("num_rounds"),
         "net_retries": _net_retries(run),
     }
@@ -207,7 +221,7 @@ def check(root: Path, query: str | None) -> int:
                                     f"checkpoint (search/reading research {search_over + f['budget']:.0f})")
                 if mode == "equal" and f["budget"] and not f["exhausted"]:
                     warn.append(f"{tag}: research finished below the budget (full research < budget; spend differs)")
-                if f["report_in_range"] is False:
+                if f["report_words"] is not None and not (2700 <= f["report_words"] <= 3300):
                     warn.append(f"{tag}: report {f['report_words']} words, outside 3000 +/- 10%")
                 if f["research_spend"] is None:
                     hard.append(f"{tag}: no research_budget record (fork / harness not up to date?)")

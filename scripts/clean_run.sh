@@ -60,7 +60,7 @@ ROOT=${ROOT:-runs/clean_$BENCH}
 BUDGETS=${BUDGETS:-"100000 150000 200000"}
 ARMS=${ARMS:-"none extractive prompted prompted_scores bc dpo"}
 JOBS=${JOBS:-6}
-STOPPERS="prompted prompted_scores bc dpo"
+STOPPERS=${STOPPERS-"prompted prompted_scores bc dpo"}   # STOPPERS="" skips the stop-respected mode
 top_budget=$(echo $BUDGETS | tr ' ' '\n' | sort -n | tail -1)
 fork=third_party/gpt-researcher
 mkdir -p "$ROOT/logs"
